@@ -29,15 +29,45 @@
 #include "vfs.h"
 #include "cache1d.h"
 
+enum rhiType_t {
+    RHI_UNKNOWN = 0,
+    RHI_OPENGL,
+    RHI_D3D12
+};
+
+extern rhiType_t rhiType;
+
+__forceinline float packint(int c1, int c2, int c3, int c4)
+{
+	return (c1 << 18) | (c2 << 12) | (c3 << 6) | (c4);
+}
+
+struct shaderUniformBuffer_t {
+	float mvp[16];
+};
+
+void GL_Init(void);
+void GL_SetModelViewMatrix(float* newModelViewMatrix);
+void GL_SetProjectionMatrix(float* newProjectionMatrix);
+void GL_SetModelViewToIdentity(void);
+void GL_SetColor(float r, float g, float b, float a);
+void GL_DrawBuffer(int picnum, float* vertexes, int numPoints);
+void GL_DrawBuffer(int startIndex, int numIndexes);
+void GL_EndFrame(void);
+void GL_BindTexture(struct tr_texture* texture, int tmu);
+void GL_BindDescSetForDrawCall(shaderUniformBuffer_t& uniformBuffer, bool depth);
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 enum rendmode_t {
-    REND_CLASSIC,
-    REND_POLYMOST = 3,
-    REND_POLYMER
+	REND_CLASSIC,
+	REND_POLYMOST = 3,
+	REND_POLYMER
 };
+
 
 #define PI 3.14159265358979323846
 #define fPI 3.14159265358979323846f

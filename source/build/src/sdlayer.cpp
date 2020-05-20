@@ -42,6 +42,27 @@
 #include "vfs.h"
 #include "communityapi.h"
 
+#include "buildrender.h"
+#include <vector>
+
+tr_renderer* m_renderer = nullptr;
+tr_cmd_pool* m_cmd_pool = nullptr;
+tr_cmd** m_cmds = nullptr;
+
+const uint32_t      k_image_count = 3;
+
+uint64_t            s_frame_count = 0;
+
+uint32_t frameIdx = -1;
+tr_fence* image_acquired_fence = NULL;
+tr_semaphore* image_acquired_semaphore = NULL;
+tr_semaphore* render_complete_semaphores = NULL;
+
+uint32_t swapchain_image_index = -1;
+tr_render_target* render_target = NULL;
+
+tr_cmd* graphicscmd = NULL;
+
 #if SDL_MAJOR_VERSION >= 2
 static SDL_version linked;
 #else
@@ -57,6 +78,35 @@ int32_t startwin_settitle(const char *s) { UNREFERENCED_PARAMETER(s); return 0; 
 int32_t startwin_run(void) { return 0; }
 #endif
 
+
+void renderer_log(tr_log_type type, const char* msg, const char* component)
+{
+	//switch (type) {
+	//case tr_log_type_info: {LOG("[INFO]" << "[" << component << "] : " << msg); } break;
+	//case tr_log_type_warn: {LOG("[WARN]" << "[" << component << "] : " << msg); } break;
+	//case tr_log_type_debug: {LOG("[DEBUG]" << "[" << component << "] : " << msg); } break;
+	//case tr_log_type_error: {LOG("[ERORR]" << "[" << component << "] : " << msg); } break;
+	//default: break;
+	//}
+	OutputDebugStringA(msg);
+}
+
+#ifdef BUILD_VULKAN
+VKAPI_ATTR VkBool32 VKAPI_CALL vulkan_debug(
+	VkDebugReportFlagsEXT      flags,
+	VkDebugReportObjectTypeEXT objectType,
+	uint64_t                   object,
+	size_t                     location,
+	int32_t                    messageCode,
+	const char* pLayerPrefix,
+	const char* pMessage,
+	void* pUserData
+)
+{
+	OutputDebugStringA(pMessage);
+	return VK_FALSE;
+}
+#endif
 /// These can be useful for debugging sometimes...
 //#define SDL_WM_GrabInput(x) SDL_WM_GrabInput(SDL_GRAB_OFF)
 //#define SDL_ShowCursor(x) SDL_ShowCursor(SDL_ENABLE)
@@ -573,22 +623,25 @@ int32_t videoSetVsync(int32_t newSync)
 #ifdef USE_OPENGL
     if (sdl_context)
     {
-        int result = SDL_GL_SetSwapInterval(sdlayer_getswapinterval(newSync));
-
-        if (result == -1)
+        if (rhiType == RHI_OPENGL)
         {
-            if (newSync == -1)
-            {
-                OSD_Printf("debug: GL driver rejected SwapInterval %d!\n", sdlayer_getswapinterval(newSync));
-
-                newSync = 1;
-                result  = SDL_GL_SetSwapInterval(sdlayer_getswapinterval(newSync));
-            }
+            int result = SDL_GL_SetSwapInterval(sdlayer_getswapinterval(newSync));
 
             if (result == -1)
             {
-                OSD_Printf("debug: GL driver rejected SwapInterval %d!\n", sdlayer_getswapinterval(newSync));
-                newSync = 0;
+                if (newSync == -1)
+                {
+                    OSD_Printf("debug: GL driver rejected SwapInterval %d!\n", sdlayer_getswapinterval(newSync));
+
+                    newSync = 1;
+                    result = SDL_GL_SetSwapInterval(sdlayer_getswapinterval(newSync));
+                }
+
+                if (result == -1)
+                {
+                    OSD_Printf("debug: GL driver rejected SwapInterval %d!\n", sdlayer_getswapinterval(newSync));
+                    newSync = 0;
+                }
             }
         }
 
@@ -680,10 +733,13 @@ int32_t initsystem(void)
     if (!novideo)
     {
 #ifdef USE_OPENGL
-        if (SDL_GL_LoadLibrary(0))
+        if (rhiType == RHI_OPENGL)
         {
-            initprintf("Failed loading OpenGL Driver.  GL modes will be unavailable. Error: %s\n", SDL_GetError());
-            nogl = 1;
+            if (SDL_GL_LoadLibrary(0))
+            {
+                initprintf("Failed loading OpenGL Driver.  GL modes will be unavailable. Error: %s\n", SDL_GetError());
+                nogl = 1;
+            }
         }
 #ifdef POLYMER
         if (loadglulibrary(getenv("BUILD_GLULIB")))
@@ -729,12 +785,14 @@ void uninitsystem(void)
     SDL_Quit();
 
 #ifdef USE_OPENGL
+    if (rhiType == RHI_OPENGL) {
 # if SDL_MAJOR_VERSION >= 2
-    SDL_GL_UnloadLibrary();
+        SDL_GL_UnloadLibrary();
 # endif
 # ifdef POLYMER
-    unloadglulibrary();
+        unloadglulibrary();
 # endif
+    }
 #endif
 }
 
@@ -1426,14 +1484,17 @@ void sdlayer_setvideomode_opengl(void)
     glsurface_destroy();
     polymost_glreset();
 
-    glShadeModel(GL_SMOOTH);  // GL_FLAT
-    glClearColor(0, 0, 0, 1.0);  // Black Background
-    glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);  // Use FASTEST for ortho!
-//    glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+    if (rhiType == RHI_OPENGL)
+    {
+        glShadeModel(GL_SMOOTH);  // GL_FLAT
+        glClearColor(0, 0, 0, 1.0);  // Black Background
+        glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);  // Use FASTEST for ortho!
+    //    glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
 
 #ifndef EDUKE32_GLES
-    glDisable(GL_DITHER);
+        glDisable(GL_DITHER);
 #endif
+    }
 
     fill_glinfo();
 
@@ -1627,30 +1688,72 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
 
         sdl_window = SDL_CreateWindow("", windowpos ? windowx : (int)SDL_WINDOWPOS_CENTERED_DISPLAY(display),
                                         windowpos ? windowy : (int)SDL_WINDOWPOS_CENTERED_DISPLAY(display), x, y,
-                                        SDL_WINDOW_OPENGL | borderless);
+#ifdef BUILD_VULKAN
+			SDL_WINDOW_VULKAN );
+#else
+			SDL_WINDOW_OPENGL | borderless);
+#endif
 
-        if (sdl_window)
-            sdl_context = SDL_GL_CreateContext(sdl_window);
+        if (rhiType == RHI_OPENGL) {
 
-        if (!sdl_window || !sdl_context)
-        {
-            initprintf("Unable to set video mode: %s failed: %s\n", sdl_window ? "SDL_GL_CreateContext" : "SDL_GL_CreateWindow",  SDL_GetError());
-            nogl = 1;
-            destroy_window_resources();
-            return -1;
+            if (sdl_window)
+                sdl_context = SDL_GL_CreateContext(sdl_window);
+
+            if (!sdl_window || !sdl_context)
+            {
+                initprintf("Unable to set video mode: %s failed: %s\n", sdl_window ? "SDL_GL_CreateContext" : "SDL_GL_CreateWindow", SDL_GetError());
+                nogl = 1;
+                destroy_window_resources();
+                return -1;
+            }
+
+            gladLoadGLLoader(SDL_GL_GetProcAddress);
+            if (GLVersion.major < 2)
+            {
+                initprintf("Your computer does not support OpenGL version 2 or greater. GL modes are unavailable.\n");
+                nogl = 1;
+                destroy_window_resources();
+                return -1;
+            }
+
+            SDL_SetWindowFullscreen(sdl_window, ((fs & 1) ? (matchedResolution ? SDL_WINDOW_FULLSCREEN_DESKTOP : SDL_WINDOW_FULLSCREEN) : 0));
+            SDL_GL_SetSwapInterval(sdlayer_getswapinterval(vsync_renderlayer));
         }
+		else if (rhiType == RHI_D3D12) {
+#ifdef BUILD_VULKAN
+			std::vector<const char*> instance_layers = {
+#if defined(_DEBUG)
+		"VK_LAYER_LUNARG_standard_validation",
+#endif
+			};
+#endif
+			tr_renderer_settings settings = {};
+			settings.handle.hinstance = ::GetModuleHandle(NULL);
+			settings.handle.hwnd = win_gethwnd();
+			settings.width = x;
+			settings.height = y;
+			settings.swapchain.image_count = k_image_count;
+			settings.swapchain.sample_count = tr_sample_count_8;
+			settings.swapchain.color_format = tr_format_b8g8r8a8_unorm;
+			settings.swapchain.depth_stencil_format = tr_format_d32_float;
+			settings.swapchain.depth_stencil_clear_value.depth = 1.0f;
+			settings.swapchain.depth_stencil_clear_value.stencil = 255;
+			settings.log_fn = renderer_log;
+#if defined(BUILD_VULKAN)
+			settings.vk_debug_fn = vulkan_debug;
+			settings.instance_layers.count = (uint32_t)instance_layers.size();
+			settings.instance_layers.names = instance_layers.empty() ? nullptr : instance_layers.data();
+#endif
+			tr_create_renderer("eduke32", &settings, &m_renderer);
 
-        gladLoadGLLoader(SDL_GL_GetProcAddress);
-        if (GLVersion.major < 2)
-        {
-            initprintf("Your computer does not support OpenGL version 2 or greater. GL modes are unavailable.\n");
-            nogl = 1;
-            destroy_window_resources();
-            return -1;
-        }
+			tr_create_cmd_pool(m_renderer, m_renderer->graphics_queue, false, &m_cmd_pool);
+			tr_create_cmd_n(m_cmd_pool, false, k_image_count, &m_cmds);
 
-        SDL_SetWindowFullscreen(sdl_window, ((fs & 1) ? (matchedResolution ? SDL_WINDOW_FULLSCREEN_DESKTOP : SDL_WINDOW_FULLSCREEN) : 0));
-        SDL_GL_SetSwapInterval(sdlayer_getswapinterval(vsync_renderlayer));
+			GL_Init();
+		}
+		else {
+			assert(!"Unknown RHI Type!");
+		}
         vsync_renderlayer = sdlayer_checkvsync(vsync_renderlayer);
 
         setrefreshrate();
@@ -1801,6 +1904,62 @@ void videoShowFrame(int32_t w)
 #ifdef __ANDROID__
     if (mobile_halted) return;
 #endif
+
+	if (rhiType == RHI_D3D12) {
+		if (graphicscmd != NULL) {
+			tr_cmd_end_render(graphicscmd);
+			tr_cmd_render_target_transition(graphicscmd, render_target, tr_texture_usage_color_attachment, tr_texture_usage_present);
+			tr_cmd_depth_stencil_transition(graphicscmd, render_target, tr_texture_usage_depth_stencil_attachment, tr_texture_usage_sampled_image);
+			tr_end_cmd(graphicscmd);
+
+			tr_queue_submit(m_renderer->graphics_queue, 1, &graphicscmd, 1, &image_acquired_semaphore, 1, &render_complete_semaphores);
+			tr_queue_present(m_renderer->present_queue, 1, &render_complete_semaphores);
+
+			tr_queue_wait_idle(m_renderer->graphics_queue);
+
+			image_acquired_fence = NULL;
+			image_acquired_semaphore = NULL;
+			render_complete_semaphores = NULL;
+
+			s_frame_count++;
+
+			if (!offscreenrendering)
+				frameplace = 0;
+
+			GL_EndFrame();
+		}
+
+		{
+			uint32_t frameIdx = s_frame_count % m_renderer->settings.swapchain.image_count;
+
+			image_acquired_fence = m_renderer->image_acquired_fences[frameIdx];
+			image_acquired_semaphore = m_renderer->image_acquired_semaphores[frameIdx];
+			render_complete_semaphores = m_renderer->render_complete_semaphores[frameIdx];
+
+			tr_acquire_next_image(m_renderer, image_acquired_semaphore, image_acquired_fence);
+
+			swapchain_image_index = m_renderer->swapchain_image_index;
+			render_target = m_renderer->swapchain_render_targets[swapchain_image_index];
+
+			graphicscmd = m_cmds[frameIdx];
+
+			tr_begin_cmd(graphicscmd);
+			tr_cmd_render_target_transition(graphicscmd, render_target, tr_texture_usage_present, tr_texture_usage_color_attachment);
+			tr_cmd_depth_stencil_transition(graphicscmd, render_target, tr_texture_usage_sampled_image, tr_texture_usage_depth_stencil_attachment);
+			tr_cmd_set_viewport(graphicscmd, 0, 0, (float)xdim, (float)ydim, 0.0f, 1.0f);
+			tr_cmd_set_scissor(graphicscmd, 0, 0, xdim, ydim);
+			tr_cmd_begin_render(graphicscmd, render_target);
+
+			// Do we always want to clear at the start of a frame?
+			tr_clear_value color_clear_value = { 0.0f, 0.0f, 0.0f, 0.0f };
+			tr_cmd_clear_color_attachment(graphicscmd, 0, &color_clear_value);
+			tr_clear_value depth_stencil_clear_value = { 0 };
+			depth_stencil_clear_value.depth = 1.0f;
+			depth_stencil_clear_value.stencil = 255;
+			tr_cmd_clear_depth_stencil_attachment(graphicscmd, &depth_stencil_clear_value);
+		}
+		return;
+	}
 
 #ifdef USE_OPENGL
     if (!nogl)

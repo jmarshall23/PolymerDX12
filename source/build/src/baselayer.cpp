@@ -278,6 +278,9 @@ struct glinfo_t glinfo =
 
 void fill_glinfo(void)
 {
+    if (rhiType == RHI_D3D12)
+        return;
+
     glinfo.extensions = (const char *)glGetString(GL_EXTENSIONS);
     glinfo.renderer   = (const char *)glGetString(GL_RENDERER);
     glinfo.vendor     = (const char *)glGetString(GL_VENDOR);

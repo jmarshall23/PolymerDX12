@@ -9,6 +9,11 @@
 #include "engine_priv.h"
 #include "xxhash.h"
 #include "texcache.h"
+#include "buildrender.h"
+#include <vector>
+
+#include "vectormath.h"
+#include <DirectXMath.h>
 
 // CVARS
 int32_t         pr_lighting = 1;
@@ -55,6 +60,8 @@ int32_t         r_pr_maxlightpasses = 5; // value of the cvar (not live value), 
 GLenum          mapvbousage = GL_STREAM_DRAW;
 GLenum          modelvbousage = GL_STATIC_DRAW;
 
+rhiType_t       rhiType = RHI_D3D12;
+
 // BUILD DATA
 _prsector       *prsectors[MAXSECTORS];
 _prwall         *prwalls[MAXWALLS];
@@ -70,6 +77,30 @@ GLuint          prbasepalmaps[MAXBASEPALS];
 GLuint          prlookups[MAXPALOOKUPS];
 
 GLuint          prmapvbo;
+
+extern tr_cmd* graphicscmd;
+
+float4x4 viewMatrix;
+float4x4 skyMatrix;
+
+Vertex board_vertexes[POLYMER_DX12_MAXVERTS];
+int numBoardVertexes = 0;
+int numGuiVertexes = 0;
+
+//int board_indexes[POLYMER_DX12_MAXINDEXES];
+int board_indexes_table[POLYMER_DX12_MAXINDEXES];
+int numBoardIndexes = 0;
+
+#define POLYMER_DX12_STARTSPRITEVERT        (numBoardVertexes + 1)
+#define POLYMER_DX12_STARTSPRITEINDEX       (numBoardIndexes + 1)
+int numSpriteVertexes = 0;
+int numSpriteIndxes = 0;
+
+void polymer_updatesprited3d12(int32_t snum);
+
+extern tr_buffer* prd3d12_vertex_buffer;
+extern tr_buffer* prd3d12_index_buffer;
+
 const GLsizeiptr proneplanesize = sizeof(_prvert) * 4;
 const GLintptr prwalldatasize = sizeof(_prvert)* 4 * 3; // wall, over and mask planes for every wall
 GLintptr prwalldataoffset;
@@ -83,6 +114,11 @@ const GLbitfield prindexringmapflags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT 
 
 _prbucket       *prbuckethead;
 int32_t         prcanbucket;
+
+
+extern tr_renderer* m_renderer;
+
+using namespace DirectX;
 
 static const _prvert  vertsprite[4] =
 {
@@ -215,482 +251,6 @@ static const GLfloat  shadowBias[] =
     0.5, 0.5, 0.5, 1.0
 };
 
-// MATERIALS
-static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
-    {
-        1 << PR_BIT_HEADER,
-        // vert_def
-        "#version 120\n"
-        "#extension GL_ARB_texture_rectangle : enable\n"
-        "\n",
-        // vert_prog
-        "",
-        // frag_def
-        "#version 120\n"
-        "#extension GL_ARB_texture_rectangle : enable\n"
-        "\n",
-        // frag_prog
-        "",
-    },
-    {
-        1 << PR_BIT_ANIM_INTERPOLATION,
-        // vert_def
-        "attribute vec4 nextFrameData;\n"
-        "attribute vec4 nextFrameNormal;\n"
-        "uniform float frameProgress;\n"
-        "\n",
-        // vert_prog
-        "  vec4 currentFramePosition;\n"
-        "  vec4 nextFramePosition;\n"
-        "\n"
-        "  currentFramePosition = curVertex * (1.0 - frameProgress);\n"
-        "  nextFramePosition = nextFrameData * frameProgress;\n"
-        "  curVertex = currentFramePosition + nextFramePosition;\n"
-        "\n"
-        "  currentFramePosition = vec4(curNormal, 1.0) * (1.0 - frameProgress);\n"
-        "  nextFramePosition = nextFrameNormal * frameProgress;\n"
-        "  curNormal = vec3(currentFramePosition + nextFramePosition);\n"
-        "\n",
-        // frag_def
-        "",
-        // frag_prog
-        "",
-    },
-    {
-        1 << PR_BIT_LIGHTING_PASS,
-        // vert_def
-        "",
-        // vert_prog
-        "",
-        // frag_def
-        "",
-        // frag_prog
-        "  isLightingPass = 1;\n"
-        "  result = vec4(0.0, 0.0, 0.0, 1.0);\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_NORMAL_MAP,
-        // vert_def
-        "attribute vec3 T;\n"
-        "attribute vec3 B;\n"
-        "attribute vec3 N;\n"
-        "uniform vec3 eyePosition;\n"
-        "varying vec3 tangentSpaceEyeVec;\n"
-        "\n",
-        // vert_prog
-        "  TBN = mat3(T, B, N);\n"
-        "  tangentSpaceEyeVec = eyePosition - vec3(curVertex);\n"
-        "  tangentSpaceEyeVec = TBN * tangentSpaceEyeVec;\n"
-        "\n"
-        "  isNormalMapped = 1;\n"
-        "\n",
-        // frag_def
-        "uniform sampler2D normalMap;\n"
-        "uniform vec2 normalBias;\n"
-        "varying vec3 tangentSpaceEyeVec;\n"
-        "\n",
-        // frag_prog
-        "  vec4 normalStep;\n"
-        "  float biasedHeight;\n"
-        "\n"
-        "  eyeVec = normalize(tangentSpaceEyeVec);\n"
-        "\n"
-        "  for (int i = 0; i < 4; i++) {\n"
-        "    normalStep = texture2D(normalMap, commonTexCoord.st);\n"
-        "    biasedHeight = normalStep.a * normalBias.x - normalBias.y;\n"
-        "    commonTexCoord += (biasedHeight - commonTexCoord.z) * normalStep.z * eyeVec;\n"
-        "  }\n"
-        "\n"
-        "  normalTexel = texture2D(normalMap, commonTexCoord.st);\n"
-        "\n"
-        "  isNormalMapped = 1;\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_ART_MAP,
-        // vert_def
-        "varying vec3 horizDistance;\n"
-        "\n",
-        // vert_prog
-        "  gl_TexCoord[0] = gl_MultiTexCoord0;\n"
-        "  horizDistance = vec3(gl_ModelViewMatrix * curVertex);\n"
-        "\n",
-        // frag_def
-        "uniform sampler2D artMap;\n"
-        "uniform sampler2D basePalMap;\n"
-        "uniform sampler2DRect lookupMap;\n"
-        "uniform float shadeOffset;\n"
-        "uniform float visibility;\n"
-        "varying vec3 horizDistance;\n"
-        "\n",
-        // frag_prog
-
-        "  float shadeLookup = length(horizDistance) / 1.024 * visibility;\n"
-        "  shadeLookup = shadeLookup + shadeOffset;\n"
-        "\n"
-        "  float colorIndex = texture2D(artMap, commonTexCoord.st).r * 256.0;\n"
-        "  float colorIndexNear = texture2DRect(lookupMap, vec2(colorIndex, floor(shadeLookup))).r;\n"
-        "  float colorIndexFar = texture2DRect(lookupMap, vec2(colorIndex, floor(shadeLookup + 1.0))).r;\n"
-        "  float colorIndexFullbright = texture2DRect(lookupMap, vec2(colorIndex, 0.0)).r;\n"
-        "\n"
-        "  vec3 texelNear = texture2D(basePalMap, vec2(colorIndexNear, 0.5)).rgb;\n"
-        "  vec3 texelFar = texture2D(basePalMap, vec2(colorIndexFar, 0.5)).rgb;\n"
-        "  diffuseTexel.rgb = texture2D(basePalMap, vec2(colorIndexFullbright, 0.5)).rgb;\n"
-        "\n"
-        "  if (isLightingPass == 0) {\n"
-        "    result.rgb = mix(texelNear, texelFar, fract(shadeLookup));\n"
-        "    result.a = 1.0;\n"
-        "    if (colorIndex == 256.0)\n"
-        "      result.a = 0.0;\n"
-        "  }\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_DIFFUSE_MAP,
-        // vert_def
-        "uniform vec2 diffuseScale;\n"
-        "\n",
-        // vert_prog
-        "  gl_TexCoord[0] = vec4(diffuseScale, 1.0, 1.0) * gl_MultiTexCoord0;\n"
-        "\n",
-        // frag_def
-        "uniform sampler2D diffuseMap;\n"
-        "\n",
-        // frag_prog
-        "  diffuseTexel = texture2D(diffuseMap, commonTexCoord.st);\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_DIFFUSE_DETAIL_MAP,
-        // vert_def
-        "uniform vec2 detailScale;\n"
-        "varying vec2 fragDetailScale;\n"
-        "\n",
-        // vert_prog
-        "  fragDetailScale = detailScale;\n"
-        "  if (isNormalMapped == 0)\n"
-        "    gl_TexCoord[1] = vec4(detailScale, 1.0, 1.0) * gl_MultiTexCoord0;\n"
-        "\n",
-        // frag_def
-        "uniform sampler2D detailMap;\n"
-        "varying vec2 fragDetailScale;\n"
-        "\n",
-        // frag_prog
-        "  if (isNormalMapped == 0)\n"
-        "    diffuseTexel *= texture2D(detailMap, gl_TexCoord[1].st);\n"
-        "  else\n"
-        "    diffuseTexel *= texture2D(detailMap, commonTexCoord.st * fragDetailScale);\n"
-        "  diffuseTexel.rgb *= 2.0;\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_DIFFUSE_MODULATION,
-        // vert_def
-        "",
-        // vert_prog
-        "  gl_FrontColor = gl_Color;\n"
-        "\n",
-        // frag_def
-        "",
-        // frag_prog
-        "  if (isLightingPass == 0)\n"
-        "    result *= vec4(gl_Color);\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_DIFFUSE_MAP2,
-        // vert_def
-        "",
-        // vert_prog
-        "",
-        // frag_def
-        "",
-        // frag_prog
-        "  if (isLightingPass == 0)\n"
-        "    result *= diffuseTexel;\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_HIGHPALOOKUP_MAP,
-        // vert_def
-        "",
-        // vert_prog
-        "",
-        // frag_def
-        "uniform sampler3D highPalookupMap;\n"
-        "\n",
-        // frag_prog
-        "  float highPalScale = 0.9921875; // for 6 bits\n"
-        "  float highPalBias = 0.00390625;\n"
-        "\n"
-        "  if (isLightingPass == 0)\n"
-        "    result.rgb = texture3D(highPalookupMap, result.rgb * highPalScale + highPalBias).rgb;\n"
-        "  diffuseTexel.rgb = texture3D(highPalookupMap, diffuseTexel.rgb * highPalScale + highPalBias).rgb;\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_SPECULAR_MAP,
-        // vert_def
-        "",
-        // vert_prog
-        "",
-        // frag_def
-        "uniform sampler2D specMap;\n"
-        "\n",
-        // frag_prog
-        "  specTexel = texture2D(specMap, commonTexCoord.st);\n"
-        "\n"
-        "  isSpecularMapped = 1;\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_SPECULAR_MATERIAL,
-        // vert_def
-        "",
-        // vert_prog
-        "",
-        // frag_def
-        "uniform vec2 specMaterial;\n"
-        "\n",
-        // frag_prog
-        "  specularMaterial = specMaterial;\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_MIRROR_MAP,
-        // vert_def
-        "",
-        // vert_prog
-        "",
-        // frag_def
-        "uniform sampler2DRect mirrorMap;\n"
-        "\n",
-        // frag_prog
-        "  vec4 mirrorTexel;\n"
-        "  vec2 mirrorCoords;\n"
-        "\n"
-        "  mirrorCoords = gl_FragCoord.st;\n"
-        "  if (isNormalMapped == 1) {\n"
-        "    mirrorCoords += 100.0 * (normalTexel.rg - 0.5);\n"
-        "  }\n"
-        "  mirrorTexel = texture2DRect(mirrorMap, mirrorCoords);\n"
-        "  result = vec4((result.rgb * (1.0 - specTexel.a)) + (mirrorTexel.rgb * specTexel.rgb * specTexel.a), result.a);\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_FOG,
-        // vert_def
-        "",
-        // vert_prog
-        "",
-        // frag_def
-#ifdef PR_LINEAR_FOG
-        "uniform bool linearFog;\n"
-#endif
-        "",
-        // frag_prog
-        "  float fragDepth;\n"
-        "  float fogFactor;\n"
-        "\n"
-        "  fragDepth = gl_FragCoord.z / gl_FragCoord.w;\n"
-#ifdef PR_LINEAR_FOG
-        "  if (!linearFog) {\n"
-#endif
-        "    fragDepth *= fragDepth;\n"
-        "    fogFactor = exp2(-gl_Fog.density * gl_Fog.density * fragDepth * 1.442695);\n"
-#ifdef PR_LINEAR_FOG
-        "  } else {\n"
-        "    fogFactor = gl_Fog.scale * (gl_Fog.end - fragDepth);\n"
-        "    fogFactor = clamp(fogFactor, 0.0, 1.0);"
-        "  }\n"
-#endif
-        "  result.rgb = mix(gl_Fog.color.rgb, result.rgb, fogFactor);\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_GLOW_MAP,
-        // vert_def
-        "",
-        // vert_prog
-        "",
-        // frag_def
-        "uniform sampler2D glowMap;\n"
-        "\n",
-        // frag_prog
-        "  vec4 glowTexel;\n"
-        "\n"
-        "  glowTexel = texture2D(glowMap, commonTexCoord.st);\n"
-        "  result = vec4((result.rgb * (1.0 - glowTexel.a)) + (glowTexel.rgb * glowTexel.a), result.a);\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_PROJECTION_MAP,
-        // vert_def
-        "uniform mat4 shadowProjMatrix;\n"
-        "\n",
-        // vert_prog
-        "  gl_TexCoord[2] = shadowProjMatrix * curVertex;\n"
-        "\n",
-        // frag_def
-        "",
-        // frag_prog
-        "",
-    },
-    {
-        1 << PR_BIT_SHADOW_MAP,
-        // vert_def
-        "",
-        // vert_prog
-        "",
-        // frag_def
-        "uniform sampler2DShadow shadowMap;\n"
-        "\n",
-        // frag_prog
-        "  shadowResult = shadow2DProj(shadowMap, gl_TexCoord[2]).a;\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_LIGHT_MAP,
-        // vert_def
-        "",
-        // vert_prog
-        "",
-        // frag_def
-        "uniform sampler2D lightMap;\n"
-        "\n",
-        // frag_prog
-        "  lightTexel = texture2D(lightMap, vec2(gl_TexCoord[2].s, -gl_TexCoord[2].t) / gl_TexCoord[2].q).rgb;\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_SPOT_LIGHT,
-        // vert_def
-        "",
-        // vert_prog
-        "",
-        // frag_def
-        "uniform vec3 spotDir;\n"
-        "uniform vec2 spotRadius;\n"
-        "\n",
-        // frag_prog
-        "  spotVector = spotDir;\n"
-        "  spotCosRadius = spotRadius;\n"
-        "  isSpotLight = 1;\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_POINT_LIGHT,
-        // vert_def
-        "varying vec3 vertexNormal;\n"
-        "varying vec3 eyeVector;\n"
-        "varying vec3 lightVector;\n"
-        "varying vec3 tangentSpaceLightVector;\n"
-        "\n",
-        // vert_prog
-        "  vec3 vertexPos;\n"
-        "\n"
-        "  vertexPos = vec3(gl_ModelViewMatrix * curVertex);\n"
-        "  eyeVector = -vertexPos;\n"
-        "  lightVector = gl_LightSource[0].ambient.rgb - vertexPos;\n"
-        "\n"
-        "  if (isNormalMapped == 1) {\n"
-        "    tangentSpaceLightVector = gl_LightSource[0].specular.rgb - vec3(curVertex);\n"
-        "    tangentSpaceLightVector = TBN * tangentSpaceLightVector;\n"
-        "  } else\n"
-        "    vertexNormal = normalize(gl_NormalMatrix * curNormal);\n"
-        "\n",
-        // frag_def
-        "varying vec3 vertexNormal;\n"
-        "varying vec3 eyeVector;\n"
-        "varying vec3 lightVector;\n"
-        "varying vec3 tangentSpaceLightVector;\n"
-        "\n",
-        // frag_prog
-        "  float pointLightDistance;\n"
-        "  float lightAttenuation;\n"
-        "  float spotAttenuation;\n"
-        "  vec3 N, L, E, R, D;\n"
-        "  vec3 lightDiffuse;\n"
-        "  float lightSpecular;\n"
-        "  float NdotL;\n"
-        "  float spotCosAngle;\n"
-        "\n"
-        "  L = normalize(lightVector);\n"
-        "\n"
-        "  pointLightDistance = dot(lightVector,lightVector);\n"
-        "  lightAttenuation = clamp(1.0 - pointLightDistance * gl_LightSource[0].linearAttenuation, 0.0, 1.0);\n"
-        "  spotAttenuation = 1.0;\n"
-        "\n"
-        "  if (isSpotLight == 1) {\n"
-        "    D = normalize(spotVector);\n"
-        "    spotCosAngle = dot(-L, D);\n"
-        "    spotAttenuation = clamp((spotCosAngle - spotCosRadius.x) * spotCosRadius.y, 0.0, 1.0);\n"
-        "  }\n"
-        "\n"
-        "  if (isNormalMapped == 1) {\n"
-        "    E = eyeVec;\n"
-        "    N = normalize(2.0 * (normalTexel.rgb - 0.5));\n"
-        "    L = normalize(tangentSpaceLightVector);\n"
-        "  } else {\n"
-        "    E = normalize(eyeVector);\n"
-        "    N = normalize(vertexNormal);\n"
-        "  }\n"
-        "  NdotL = max(dot(N, L), 0.0);\n"
-        "\n"
-        "  R = reflect(-L, N);\n"
-        "\n"
-        "  lightDiffuse = gl_Color.a * shadowResult * lightTexel *\n"
-        "                 gl_LightSource[0].diffuse.rgb * lightAttenuation * spotAttenuation;\n"
-        "  result += vec4(lightDiffuse * diffuseTexel.a * diffuseTexel.rgb * NdotL, 0.0);\n"
-        "\n"
-        "  if (isSpecularMapped == 0)\n"
-        "    specTexel.rgb = diffuseTexel.rgb * diffuseTexel.a;\n"
-        "\n"
-        "  lightSpecular = pow( max(dot(R, E), 0.0), specularMaterial.x * specTexel.a) * specularMaterial.y;\n"
-        "  result += vec4(lightDiffuse * specTexel.rgb * lightSpecular, 0.0);\n"
-        "\n",
-    },
-    {
-        1 << PR_BIT_FOOTER,
-        // vert_def
-        "void main(void)\n"
-        "{\n"
-        "  vec4 curVertex = gl_Vertex;\n"
-        "  vec3 curNormal = gl_Normal;\n"
-        "  int isNormalMapped = 0;\n"
-        "  mat3 TBN;\n"
-        "\n"
-        "  gl_TexCoord[0] = gl_MultiTexCoord0;\n"
-        "\n",
-        // vert_prog
-        "  gl_Position = gl_ModelViewProjectionMatrix * curVertex;\n"
-        "}\n",
-        // frag_def
-        "void main(void)\n"
-        "{\n"
-        "  vec3 commonTexCoord = vec3(gl_TexCoord[0].st, 0.0);\n"
-        "  vec4 result = vec4(1.0, 1.0, 1.0, 1.0);\n"
-        "  vec4 diffuseTexel = vec4(1.0, 1.0, 1.0, 1.0);\n"
-        "  vec4 specTexel = vec4(1.0, 1.0, 1.0, 1.0);\n"
-        "  vec4 normalTexel;\n"
-        "  int isLightingPass = 0;\n"
-        "  int isNormalMapped = 0;\n"
-        "  int isSpecularMapped = 0;\n"
-        "  vec3 eyeVec;\n"
-        "  int isSpotLight = 0;\n"
-        "  vec3 spotVector;\n"
-        "  vec2 spotCosRadius;\n"
-        "  float shadowResult = 1.0;\n"
-        "  vec2 specularMaterial = vec2(15.0, 1.0);\n"
-        "  vec3 lightTexel = vec3(1.0, 1.0, 1.0);\n"
-        "\n",
-        // frag_prog
-        "  gl_FragColor = result;\n"
-        "}\n",
-    }
-};
-
 _prprograminfo  prprograms[1 << PR_BIT_COUNT];
 
 int32_t         overridematerial;
@@ -744,6 +304,82 @@ int32_t         polymersearching;
 
 int32_t         culledface;
 
+tr_texture* basePaletteTexture = NULL;
+tr_texture* lookupPaletteTexture = NULL;
+
+uint8_t* uploadedbasepaltable[MAXBASEPALS];
+bool isPolymerSetup = false;
+
+void polymer_uploadnewpalette(void) {
+	int basepalnum = 0;
+	bool needsUpdate = false;
+
+	if (!isPolymerSetup)
+		return;
+
+	for (int i = 0; i < MAXBASEPALS; i++)
+	{
+		if (uploadedbasepaltable[i] != basepaltable[i])
+		{
+			needsUpdate = true;
+			break;
+		}
+	}
+
+	if (!needsUpdate)
+		return;
+
+	//POGO: this is only necessary for GL fog/vertex color shade compatibility, since those features don't index into shade tables
+	uint8_t palettetable[MAXBASEPALS * (4 * 256)];
+	uint8_t* basepalWFullBrightInfo = &palettetable[0];
+
+	memset(palettetable, 0, sizeof(palettetable));
+	for (int p = 0; p < MAXBASEPALS; p++)
+	{
+		uploadedbasepaltable[p] = basepaltable[p];
+
+		if (basepaltable[p] == NULL)
+			continue;
+
+		for (int i = 0; i < 256; ++i)
+		{
+			basepalWFullBrightInfo[0] = basepaltable[p][i * 3];
+			basepalWFullBrightInfo[1] = basepaltable[p][i * 3 + 1];
+			basepalWFullBrightInfo[2] = basepaltable[p][i * 3 + 2];
+			basepalWFullBrightInfo[3] = 0;
+
+			basepalWFullBrightInfo += 4;
+		}
+	}
+
+	uint8_t* palookuptable = new uint8_t[MAXPALOOKUPS * (256 * (numshades + 1))];
+	uint8_t* paltableptr = &palookuptable[0];
+	for (int p = 0; p < MAXPALOOKUPS; p++)
+	{
+		for (int i = 0; i < 256 * numshades; ++i, paltableptr++)
+		{
+			if (palookup[p])
+			{
+				*paltableptr = palookup[p][i];
+			}
+		}
+	}
+
+	if (basePaletteTexture == NULL)
+	{
+		tr_create_texture_2d(m_renderer, 256, MAXBASEPALS, tr_sample_count_1, tr_format_r8g8b8a8_unorm, 1, NULL, false, tr_texture_usage_sampled_image, &basePaletteTexture);
+	}
+	tr_util_update_texture_uint8(m_renderer->graphics_queue, 256, MAXBASEPALS, (256 * 4), palettetable, 4, basePaletteTexture, NULL, NULL);
+
+	if (lookupPaletteTexture == NULL)
+	{
+		tr_create_texture_2d(m_renderer, 256, (numshades * MAXPALOOKUPS), tr_sample_count_1, tr_format_r8_unorm, 1, NULL, false, tr_texture_usage_sampled_image, &lookupPaletteTexture);
+	}
+	tr_util_update_texture_uint8(m_renderer->graphics_queue, 256, (numshades * MAXPALOOKUPS), (256 * 1), palookuptable, 1, lookupPaletteTexture, NULL, NULL);
+
+	delete palookuptable;
+}
+
 // EXTERNAL FUNCTIONS
 int32_t             polymer_init(void)
 {
@@ -751,20 +387,27 @@ int32_t             polymer_init(void)
 
     if (pr_verbosity >= 1) OSD_Printf("Initializing Polymer subsystem...\n");
 
-    if (!glinfo.texnpot ||
-        !glinfo.depthtex ||
-        !glinfo.shadow ||
-        !glinfo.fbos ||
-        !glinfo.rect ||
-        !glinfo.multitex ||
-        !glinfo.vbos ||
-        !glinfo.occlusionqueries ||
-        !glinfo.glsl)
-    {
-        OSD_Printf("PR : Your video card driver/combo doesn't support the necessary features!\n");
-        OSD_Printf("PR : Disabling Polymer...\n");
-        return 0;
+    if (rhiType == RHI_OPENGL) {
+        if (!glinfo.texnpot ||
+            !glinfo.depthtex ||
+            !glinfo.shadow ||
+            !glinfo.fbos ||
+            !glinfo.rect ||
+            !glinfo.multitex ||
+            !glinfo.vbos ||
+            !glinfo.occlusionqueries ||
+            !glinfo.glsl)
+        {
+            OSD_Printf("PR : Your video card driver/combo doesn't support the necessary features!\n");
+            OSD_Printf("PR : Disabling Polymer...\n");
+            return 0;
+        }
     }
+
+	isPolymerSetup = true;
+
+	// jmarshall: todo this is hardcoded in the shader, simple fix, just need to do it.
+	assert(numshades == 32);
 
     // clean up existing stuff since it will be initialized again if we're re-entering here
     polymer_uninit();
@@ -777,6 +420,15 @@ int32_t             polymer_init(void)
     {
         OSD_Printf("PR : Tessellation object initialization failed!\n");
         return 0;
+    }
+
+	polymer_ogl_loadinteraction();
+
+	memset(&uploadedbasepaltable, 0, sizeof(uploadedbasepaltable));
+
+    if (rhiType == RHI_D3D12) {
+        polymer_uploadnewpalette();
+        glinfo.texnpot = 1;
     }
 
     polymer_loadboard();
@@ -808,7 +460,9 @@ int32_t             polymer_init(void)
 
     polymersearching = FALSE;
 
-    polymer_initrendertargets(pr_shadowcount + 1);
+	if (rhiType == RHI_OPENGL) {
+		polymer_initrendertargets(pr_shadowcount + 1);
+	}
 
     // Prime highpalookup maps
     i = 0;
@@ -844,7 +498,7 @@ int32_t             polymer_init(void)
     }
 
 #ifndef __APPLE__
-    if (glinfo.debugoutput) {
+    if (glinfo.debugoutput && rhiType == RHI_OPENGL) {
         // Enable everything.
         glDebugMessageControlARB(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, NULL, GL_TRUE);
         glDebugMessageCallbackARB((GLDEBUGPROCARB)polymer_debugoutputcallback, NULL);
@@ -925,6 +579,9 @@ void                polymer_setaspect(int32_t ang)
 
 void                polymer_glinit(void)
 {
+    if (rhiType == RHI_D3D12)
+        return;
+
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClearStencil(0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -956,6 +613,26 @@ void                polymer_glinit(void)
     glFrontFace(GL_CCW);
 
     glEnable(GL_CULL_FACE);
+}
+
+void polymer_uploadverts(int picnum, int startVertex, int numPoints, int startIndex, int numIndexes, float shade, float visibility, float palette) {
+	float TileRectInfo[4];
+	polymost_gettileinfo(picnum, TileRectInfo[0], TileRectInfo[1], TileRectInfo[2], TileRectInfo[3]);
+
+	assert(palette < 60);
+	assert(curbasepal < 60);
+
+	for (int i = startVertex; i < startVertex + numPoints; i++) {
+		board_vertexes[i].TileRect[0] = TileRectInfo[0];
+		board_vertexes[i].TileRect[1] = TileRectInfo[1];
+		board_vertexes[i].TileRect[2] = TileRectInfo[2];
+		board_vertexes[i].TileRect[3] = TileRectInfo[3];
+		board_vertexes[i].info[0] = shade;
+		board_vertexes[i].info[1] = visibility;
+		board_vertexes[i].info[2] = packint(palette, curbasepal, 0, 0);
+	}
+
+	memcpy(((unsigned char*)prd3d12_vertex_buffer->cpu_mapped_address) + (startVertex * sizeof(Vertex)), &board_vertexes[startVertex], numPoints * sizeof(Vertex));
 }
 
 void                polymer_resetlights(void)
@@ -1019,21 +696,23 @@ void                polymer_loadboard(void)
     // in the big map buffer, sectors have floor and ceiling vertices for each wall first, then walls
     prwalldataoffset = numwalls * 2 * sizeof(_prvert);
 
-    glGenBuffers(1, &prmapvbo);
-    glBindBuffer(GL_ARRAY_BUFFER, prmapvbo);
-    glBufferData(GL_ARRAY_BUFFER, prwalldataoffset + (numwalls * prwalldatasize), NULL, mapvbousage);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    if (rhiType == RHI_OPENGL) {
+        glGenBuffers(1, &prmapvbo);
+        glBindBuffer(GL_ARRAY_BUFFER, prmapvbo);
+        glBufferData(GL_ARRAY_BUFFER, prwalldataoffset + (numwalls * prwalldatasize), NULL, mapvbousage);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    glGenBuffers(1, &prindexringvbo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, prindexringvbo);
+        glGenBuffers(1, &prindexringvbo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, prindexringvbo);
 
-    if (pr_buckets)
-    {
-        glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, prindexringsize * sizeof(GLuint), NULL, prindexringmapflags | GL_DYNAMIC_STORAGE_BIT);
-        prindexring = (GLuint*)glMapBufferRange(GL_ELEMENT_ARRAY_BUFFER, 0, prindexringsize * sizeof(GLuint), prindexringmapflags);
+        if (pr_buckets)
+        {
+            glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, prindexringsize * sizeof(GLuint), NULL, prindexringmapflags | GL_DYNAMIC_STORAGE_BIT);
+            prindexring = (GLuint*)glMapBufferRange(GL_ELEMENT_ARRAY_BUFFER, 0, prindexringsize * sizeof(GLuint), prindexringmapflags);
+        }
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     }
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     i = 0;
     while (i < numsectors)
@@ -1075,6 +754,21 @@ void polymer_fillpolygon(int32_t npoints)
     glDisable(GL_TEXTURE_2D);
 }
 
+void D3D12_CreateProjectionMatrix(int32_t fov, float4x4& projectionMatrix, int width, int height)
+{
+	float           aspect;
+	float fang = (float)fov * atanf((float)viewingrange / 65536.0f) / (PI / 4);
+
+	aspect = (float)(width + 1) / (float)(height + 1);
+
+	float matrix[16];
+	glhPerspectivef2(matrix, fang / (2048.0f / 360.0f), aspect, 0.01f, 300.0f);
+	projectionMatrix.r0 = float4(matrix[0], matrix[1], matrix[2], matrix[3]);
+	projectionMatrix.r1 = float4(matrix[4], matrix[5], matrix[6], matrix[7]);
+	projectionMatrix.r2 = float4(matrix[8], matrix[9], matrix[10], matrix[11]);
+	projectionMatrix.r3 = float4(matrix[12], matrix[13], matrix[14], matrix[15]);
+}
+
 // The parallaxed ART sky angle divisor corresponding to a horizfrac of 32768.
 #define DEFAULT_ARTSKY_ANGDIV 4.3027f
 
@@ -1087,6 +781,8 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
     pthtyp*         pth;
 
     if (videoGetRenderMode() == REND_CLASSIC) return;
+
+	memset(prd3d12_index_buffer->cpu_mapped_address, 0, sizeof(int) * POLYMER_DX12_MAXINDEXES);
 
     videoBeginDrawing();
 
@@ -1106,7 +802,9 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
     pos[1] = -(float)(daposz) / 16.0f;
     pos[2] = -(float)daposx;
 
-    polymer_updatelights();
+    if (rhiType == RHI_OPENGL) {
+        polymer_updatelights();
+    }
 
 //     polymer_resetlights();
 //     if (pr_lighting)
@@ -1132,31 +830,96 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
     if (!pth || !(pth->flags & PTH_SKYBOX))
         skyhoriz *= curskyangmul;
 
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    if (rhiType == RHI_OPENGL)
+    {
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
 
-    glRotatef(tiltang, 0.0f, 0.0f, -1.0f);
-    glRotatef(skyhoriz, 1.0f, 0.0f, 0.0f);
-    glRotatef(ang, 0.0f, 1.0f, 0.0f);
+        glRotatef(tiltang, 0.0f, 0.0f, -1.0f);
+        glRotatef(skyhoriz, 1.0f, 0.0f, 0.0f);
+        glRotatef(ang, 0.0f, 1.0f, 0.0f);
 
-    glScalef(1.0f / 1000.0f, 1.0f / 1000.0f, 1.0f / 1000.0f);
-    glTranslatef(-pos[0], -pos[1], -pos[2]);
+        glScalef(1.0f / 1000.0f, 1.0f / 1000.0f, 1.0f / 1000.0f);
+        glTranslatef(-pos[0], -pos[1], -pos[2]);
 
-    glGetFloatv(GL_MODELVIEW_MATRIX, rootskymodelviewmatrix);
+        glGetFloatv(GL_MODELVIEW_MATRIX, rootskymodelviewmatrix);
 
-    curskymodelviewmatrix = rootskymodelviewmatrix;
+        curskymodelviewmatrix = rootskymodelviewmatrix;
 
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
 
-    glRotatef(tiltang, 0.0f, 0.0f, -1.0f);
-    glRotatef(horizang, 1.0f, 0.0f, 0.0f);
-    glRotatef(ang, 0.0f, 1.0f, 0.0f);
+        glRotatef(tiltang, 0.0f, 0.0f, -1.0f);
+        glRotatef(horizang, 1.0f, 0.0f, 0.0f);
+        glRotatef(ang, 0.0f, 1.0f, 0.0f);
 
-    glScalef(1.0f / 1000.0f, 1.0f / 1000.0f, 1.0f / 1000.0f);
-    glTranslatef(-pos[0], -pos[1], -pos[2]);
+        glScalef(1.0f / 1000.0f, 1.0f / 1000.0f, 1.0f / 1000.0f);
+        glTranslatef(-pos[0], -pos[1], -pos[2]);
 
-    glGetFloatv(GL_MODELVIEW_MATRIX, rootmodelviewmatrix);
+        glGetFloatv(GL_MODELVIEW_MATRIX, rootmodelviewmatrix);
+    }
+	else if (rhiType == RHI_D3D12)
+	{
+		float3	position((float)daposy, -(float)(daposz) / 16.0f, -(float)daposx);
+
+		// if it's not a skybox, make the sky parallax
+		// DEFAULT_ARTSKY_ANGDIV is computed from eyeballed values
+		// need to recompute it if we ever change the max horiz amplitude
+		//skyhoriz *= curskyangmul;
+
+		{
+			float4x4 rotationMatrix = float4x4Identity();
+
+			_math_matrix_rotate(rotationMatrix, tiltang, 0.0f, 0.0f, -1.0f);
+			_math_matrix_rotate(rotationMatrix, skyhoriz, 1.0f, 0.0f, 0.0f);
+			_math_matrix_rotate(rotationMatrix, ang, 0.0f, 1.0f, 0.0f);
+
+			skyMatrix = rotationMatrix;
+
+			float4x4 skyModelView = skyMatrix;
+
+			float4x4 scaleMatrix = float4x4Scale(1.0f / 1000.0f, 1.0f / 1000.0f, 1.0f / 1000.0f);
+			skyMatrix = skyMatrix * scaleMatrix;
+
+			float4x4 translationMatrix = float4x4Translation(-position.x, -position.y, -position.z);
+			skyMatrix = skyMatrix * translationMatrix;
+		}
+
+		{
+			float4x4 rotationMatrix = float4x4Identity();
+
+			_math_matrix_rotate(rotationMatrix, tiltang, 0.0f, 0.0f, -1.0f);
+			_math_matrix_rotate(rotationMatrix, horizang, 1.0f, 0.0f, 0.0f);
+			_math_matrix_rotate(rotationMatrix, ang, 0.0f, 1.0f, 0.0f);
+
+			viewMatrix = rotationMatrix;
+
+			float4x4 skyModelView = viewMatrix;
+
+			float4x4 scaleMatrix = float4x4Scale(1.0f / 1000.0f, 1.0f / 1000.0f, 1.0f / 1000.0f);
+			viewMatrix = viewMatrix * scaleMatrix;
+
+			float4x4 translationMatrix = float4x4Translation(-position.x, -position.y, -position.z);
+			viewMatrix = viewMatrix * translationMatrix;
+		}
+
+
+		float4x4 projectionMatrix;
+		float4x4 occlusionProjectionMatrix;
+		D3D12_CreateProjectionMatrix(426, projectionMatrix, xdim, ydim);
+
+		//projectionMatrix.SetX(Math::Vector4(fydimen, 0.0f   , 1.0f, 0.0f));
+		//projectionMatrix.SetY(Math::Vector4(0.0f   , fxdimen, 1.0f, 1.0f));
+		//projectionMatrix.SetZ(Math::Vector4(0.0f   , 0.0f   , 1.0f, fydimen));
+		//projectionMatrix.SetW(Math::Vector4(0.0f   , 0.0f   , -1.0f, 0.0f));
+
+		//XMMATRIX viewProj = view * proj;
+		GL_SetProjectionMatrix((float*)&projectionMatrix);
+		GL_SetModelViewMatrix((float*)&viewMatrix);
+
+		//d3d12CoreState->m_sceneCB[frameIndex].cameraPosition = { position.x, position.y, position.z, position.w };
+		//d3d12CoreState->m_sceneCB[frameIndex].projectionToWorld = XMMatrixInverse(nullptr, viewProj);        
+	}
 
     cursectnum = dacursectnum;
     updatesector(daposx, daposy, &cursectnum);
@@ -1258,18 +1021,20 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
 
 void                polymer_drawmasks(void)
 {
-    glEnable(GL_ALPHA_TEST);
-    glEnable(GL_BLEND);
-//     glEnable(GL_POLYGON_OFFSET_FILL);
+// jmarshall: fixme
+    if (rhiType == RHI_OPENGL) {
+        glEnable(GL_ALPHA_TEST);
+        glEnable(GL_BLEND);
+        //     glEnable(GL_POLYGON_OFFSET_FILL);
 
-//     while (--spritesortcnt)
-//     {
-//         tspriteptr[spritesortcnt] = &tsprite[spritesortcnt];
-//         polymer_drawsprite(spritesortcnt);
-//     }
+        //     while (--spritesortcnt)
+        //     {
+        //         tspriteptr[spritesortcnt] = &tsprite[spritesortcnt];
+        //         polymer_drawsprite(spritesortcnt);
+        //     }
 
-    glEnable(GL_CULL_FACE);
-
+        glEnable(GL_CULL_FACE);
+    }
     if (cursectormaskcount) {
         // We (kind of) queue sector masks near to far, so drawing them in reverse
         // order is the sane approach here. Of course impossible cases will arise.
@@ -1286,11 +1051,13 @@ void                polymer_drawmasks(void)
         DO_FREE_AND_NULL(cursectormasks);
     }
 
-    glDisable(GL_CULL_FACE);
+    if (rhiType == RHI_OPENGL) {
+        glDisable(GL_CULL_FACE);
 
-//     glDisable(GL_POLYGON_OFFSET_FILL);
-    glDisable(GL_BLEND);
-    glDisable(GL_ALPHA_TEST);
+        //     glDisable(GL_POLYGON_OFFSET_FILL);
+        glDisable(GL_BLEND);
+        glDisable(GL_ALPHA_TEST);
+    }
 }
 
 void                polymer_editorpick(void)
@@ -1485,7 +1252,10 @@ void                polymer_drawmaskwall(int32_t damaskwallcnt)
     wal = &wall[maskwall[damaskwallcnt]];
     w = prwalls[maskwall[damaskwallcnt]];
 
-    glEnable(GL_CULL_FACE);
+	if (rhiType == RHI_OPENGL) {
+		glEnable(GL_CULL_FACE);
+	}
+
 
     if (searchit == 2) {
         polymer_drawsearchplane(&w->mask, oldcolor, 0x04, (GLubyte *)&maskwall[damaskwallcnt]);
@@ -1494,7 +1264,9 @@ void                polymer_drawmaskwall(int32_t damaskwallcnt)
         polymer_drawplane(&w->mask);
     }
 
-    glDisable(GL_CULL_FACE);
+	if (rhiType == RHI_OPENGL) {
+		glDisable(GL_CULL_FACE);
+	}
 }
 
 void                polymer_drawsprite(int32_t snum)
@@ -1552,6 +1324,11 @@ void                polymer_drawsprite(int32_t snum)
         tspr->x -= sintable[(tspr->ang + 512) & 2047] >> 13;
         tspr->y -= sintable[tspr->ang & 2047] >> 13;
     }
+
+	if (rhiType == RHI_D3D12) {
+		polymer_updatesprited3d12(snum);
+		return;
+	}
 
     polymer_updatesprite(snum);
 
@@ -1801,11 +1578,13 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
     GLdouble        plane[4];
     float           coeff;
 
-    curmodelviewmatrix = localmodelviewmatrix;
-    glGetFloatv(GL_MODELVIEW_MATRIX, localmodelviewmatrix);
-    glGetFloatv(GL_PROJECTION_MATRIX, localprojectionmatrix);
+    if (rhiType == RHI_OPENGL) {
+        curmodelviewmatrix = localmodelviewmatrix;
+        glGetFloatv(GL_MODELVIEW_MATRIX, localmodelviewmatrix);
+        glGetFloatv(GL_PROJECTION_MATRIX, localprojectionmatrix);
 
-    polymer_extractfrustum(localmodelviewmatrix, localprojectionmatrix, frustum);
+        polymer_extractfrustum(localmodelviewmatrix, localprojectionmatrix, frustum);
+    }
 
     Bmemset(querydelay, 0, sizeof(int16_t) * numsectors);
     Bmemset(queryid, 0, sizeof(GLuint) * numwalls);
@@ -1825,10 +1604,19 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
     cursectormasks = localsectormasks;
     cursectormaskcount = localsectormaskcount;
 
-    glDisable(GL_DEPTH_TEST);
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-    polymer_drawsky(cursky, curskypal, curskyshade);
-    glEnable(GL_DEPTH_TEST);
+	if (rhiType == RHI_OPENGL) {
+		glDisable(GL_DEPTH_TEST);
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+		polymer_drawsky(cursky, curskypal, curskyshade);
+		glEnable(GL_DEPTH_TEST);
+	}
+	else if (rhiType == RHI_D3D12) {
+		polymer_drawsky(cursky, curskypal, curskyshade);
+		tr_clear_value depth_stencil_clear_value = { 0 };
+		depth_stencil_clear_value.depth = 1.0f;
+		depth_stencil_clear_value.stencil = 255;
+		tr_cmd_clear_depth_stencil_attachment(graphicscmd, &depth_stencil_clear_value);
+	}
 
     // depth-only occlusion testing pass
 //     overridematerial = 0;
@@ -1858,9 +1646,7 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
         i = sec->wallnum-1;
         while (i >= 0)
         {
-            if ((wall[sec->wallptr + i].nextsector >= 0) &&
-                (wallvisible(globalposx, globalposy, sec->wallptr + i)) &&
-                (polymer_planeinfrustum(&prwalls[sec->wallptr + i]->mask, frustum)))
+            if ((wall[sec->wallptr + i].nextsector >= 0) && (wallvisible(globalposx, globalposy, sec->wallptr + i)))
             {
                 if ((prwalls[sec->wallptr + i]->mask.vertcount == 4) &&
                     !(prwalls[sec->wallptr + i]->underover & 4) &&
@@ -1914,7 +1700,7 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
 
                         // hack to avoid occlusion querying portals that are too close to the viewpoint
                         // this is needed because of the near z-clipping plane;
-                        if (sqdist < 100)
+                        if (sqdist < 100 || rhiType == RHI_D3D12)
                             queryid[sec->wallptr + i] = 0xFFFFFFFF;
                         else {
                             _prwall         *w;
@@ -1961,29 +1747,31 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
         }
         while (--i >= 0);
 #ifdef YAX_ENABLE
-        // queue ROR neighbors
-        if ((bunchnum = yax_getbunch(sectorqueue[front], YAX_FLOOR)) >= 0) {
+        if (rhiType == RHI_OPENGL) {
+            // queue ROR neighbors
+            if ((bunchnum = yax_getbunch(sectorqueue[front], YAX_FLOOR)) >= 0) {
 
-            for (SECTORS_OF_BUNCH(bunchnum, YAX_CEILING, ns)) {
+                for (SECTORS_OF_BUNCH(bunchnum, YAX_CEILING, ns)) {
 
-                if (ns >= 0 && !drawingstate[ns] &&
-                    polymer_planeinfrustum(&prsectors[ns]->ceil, frustum)) {
+                    if (ns >= 0 && !drawingstate[ns] &&
+                        polymer_planeinfrustum(&prsectors[ns]->ceil, frustum)) {
 
-                    sectorqueue[back++] = ns;
-                    drawingstate[ns] = 1;
+                        sectorqueue[back++] = ns;
+                        drawingstate[ns] = 1;
+                    }
                 }
             }
-        }
 
-        if ((bunchnum = yax_getbunch(sectorqueue[front], YAX_CEILING)) >= 0) {
+            if ((bunchnum = yax_getbunch(sectorqueue[front], YAX_CEILING)) >= 0) {
 
-            for (SECTORS_OF_BUNCH(bunchnum, YAX_FLOOR, ns)) {
+                for (SECTORS_OF_BUNCH(bunchnum, YAX_FLOOR, ns)) {
 
-                if (ns >= 0 && !drawingstate[ns] &&
-                    polymer_planeinfrustum(&prsectors[ns]->floor, frustum)) {
+                    if (ns >= 0 && !drawingstate[ns] &&
+                        polymer_planeinfrustum(&prsectors[ns]->floor, frustum)) {
 
-                    sectorqueue[back++] = ns;
-                    drawingstate[ns] = 1;
+                        sectorqueue[back++] = ns;
+                        drawingstate[ns] = 1;
+                    }
                 }
             }
         }
@@ -2024,7 +1812,9 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
         front++;
     }
 
-    polymer_emptybuckets();
+	if (rhiType == RHI_OPENGL) {
+		polymer_emptybuckets();
+	}
 
     // do the actual shaded drawing
 //     overridematerial = 0xFFFFFFFF;
@@ -2048,84 +1838,92 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
 //         front++;
 //     }
 
-    i = mirrorcount-1;
-    while (i >= 0)
+	if (rhiType == RHI_D3D12) {
+		GL_DrawBuffer(0, numBoardIndexes);
+	}
+
+	// jmarshall: todo mirrors.
+    if (rhiType != RHI_D3D12)
     {
-        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, prrts[0].fbo);
-        glPushAttrib(GL_VIEWPORT_BIT);
-        glViewport(windowxy1.x, ydim-(windowxy2.y+1),windowxy2.x-windowxy1.x+1, windowxy2.y-windowxy1.y+1);
+        i = mirrorcount - 1;
+        while (i >= 0)
+        {
+            glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, prrts[0].fbo);
+            glPushAttrib(GL_VIEWPORT_BIT);
+            glViewport(windowxy1.x, ydim - (windowxy2.y + 1), windowxy2.x - windowxy1.x + 1, windowxy2.y - windowxy1.y + 1);
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        Bmemcpy(localskymodelviewmatrix, curskymodelviewmatrix, sizeof(GLfloat) * 16);
-        curskymodelviewmatrix = localskymodelviewmatrix;
+            Bmemcpy(localskymodelviewmatrix, curskymodelviewmatrix, sizeof(GLfloat) * 16);
+            curskymodelviewmatrix = localskymodelviewmatrix;
 
-        glMatrixMode(GL_MODELVIEW);
-        glPushMatrix();
+            glMatrixMode(GL_MODELVIEW);
+            glPushMatrix();
 
-        plane[0] = mirrorlist[i].plane->plane[0];
-        plane[1] = mirrorlist[i].plane->plane[1];
-        plane[2] = mirrorlist[i].plane->plane[2];
-        plane[3] = mirrorlist[i].plane->plane[3];
+            plane[0] = mirrorlist[i].plane->plane[0];
+            plane[1] = mirrorlist[i].plane->plane[1];
+            plane[2] = mirrorlist[i].plane->plane[2];
+            plane[3] = mirrorlist[i].plane->plane[3];
 
-        glClipPlane(GL_CLIP_PLANE0, plane);
-        polymer_inb4mirror(mirrorlist[i].plane->buffer, mirrorlist[i].plane->plane);
-        SWITCH_CULL_DIRECTION;
-        //glEnable(GL_CLIP_PLANE0);
+            glClipPlane(GL_CLIP_PLANE0, plane);
+            polymer_inb4mirror(mirrorlist[i].plane->buffer, mirrorlist[i].plane->plane);
+            SWITCH_CULL_DIRECTION;
+            //glEnable(GL_CLIP_PLANE0);
 
-        if (mirrorlist[i].wallnum >= 0)
-            renderPrepareMirror(globalposx, globalposy, globalposz, qglobalang, qglobalhoriz,
-                                mirrorlist[i].wallnum, &gx, &gy, &viewangle);
+            if (mirrorlist[i].wallnum >= 0)
+                renderPrepareMirror(globalposx, globalposy, globalposz, qglobalang, qglobalhoriz,
+                    mirrorlist[i].wallnum, &gx, &gy, &viewangle);
 
-        gx = globalposx;
-        gy = globalposy;
-        gz = globalposz;
+            gx = globalposx;
+            gy = globalposy;
+            gz = globalposz;
 
-        // map the player pos from build to polymer
-        px = globalposy;
-        py = -globalposz / 16;
-        pz = -globalposx;
+            // map the player pos from build to polymer
+            px = globalposy;
+            py = -globalposz / 16;
+            pz = -globalposx;
 
-        // calculate new player position on the other side of the mirror
-        // this way the basic build visibility shit can be used (wallvisible)
-        coeff = mirrorlist[i].plane->plane[0] * px +
+            // calculate new player position on the other side of the mirror
+            // this way the basic build visibility shit can be used (wallvisible)
+            coeff = mirrorlist[i].plane->plane[0] * px +
                 mirrorlist[i].plane->plane[1] * py +
                 mirrorlist[i].plane->plane[2] * pz +
                 mirrorlist[i].plane->plane[3];
 
-        coeff /= (float)(mirrorlist[i].plane->plane[0] * mirrorlist[i].plane->plane[0] +
-                         mirrorlist[i].plane->plane[1] * mirrorlist[i].plane->plane[1] +
-                         mirrorlist[i].plane->plane[2] * mirrorlist[i].plane->plane[2]);
+            coeff /= (float)(mirrorlist[i].plane->plane[0] * mirrorlist[i].plane->plane[0] +
+                mirrorlist[i].plane->plane[1] * mirrorlist[i].plane->plane[1] +
+                mirrorlist[i].plane->plane[2] * mirrorlist[i].plane->plane[2]);
 
-        px = (int32_t)(-coeff*mirrorlist[i].plane->plane[0]*2 + px);
-        py = (int32_t)(-coeff*mirrorlist[i].plane->plane[1]*2 + py);
-        pz = (int32_t)(-coeff*mirrorlist[i].plane->plane[2]*2 + pz);
+            px = (int32_t)(-coeff * mirrorlist[i].plane->plane[0] * 2 + px);
+            py = (int32_t)(-coeff * mirrorlist[i].plane->plane[1] * 2 + py);
+            pz = (int32_t)(-coeff * mirrorlist[i].plane->plane[2] * 2 + pz);
 
-        // map back from polymer to build
-        set_globalpos(-pz, px, -py * 16);
+            // map back from polymer to build
+            set_globalpos(-pz, px, -py * 16);
 
-        mirrors[depth++] = mirrorlist[i];
-        polymer_displayrooms(mirrorlist[i].sectnum);
-        depth--;
+            mirrors[depth++] = mirrorlist[i];
+            polymer_displayrooms(mirrorlist[i].sectnum);
+            depth--;
 
-        cursectormasks = localsectormasks;
-        cursectormaskcount = localsectormaskcount;
+            cursectormasks = localsectormasks;
+            cursectormaskcount = localsectormaskcount;
 
-        set_globalpos(gx, gy, gz);
+            set_globalpos(gx, gy, gz);
 
-        glDisable(GL_CLIP_PLANE0);
-        SWITCH_CULL_DIRECTION;
-        glMatrixMode(GL_MODELVIEW);
-        glPopMatrix();
+            glDisable(GL_CLIP_PLANE0);
+            SWITCH_CULL_DIRECTION;
+            glMatrixMode(GL_MODELVIEW);
+            glPopMatrix();
 
-        glPopAttrib();
-        glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
+            glPopAttrib();
+            glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
 
-        mirrorlist[i].plane->material.mirrormap = prrts[0].color;
-        polymer_drawplane(mirrorlist[i].plane);
-        mirrorlist[i].plane->material.mirrormap = 0;
+            mirrorlist[i].plane->material.mirrormap = prrts[0].color;
+            polymer_drawplane(mirrorlist[i].plane);
+            mirrorlist[i].plane->material.mirrormap = 0;
 
-        i--;
+            i--;
+        }
     }
 
     spritesortcnt = localspritesortcnt;
@@ -2313,6 +2111,19 @@ static void         polymer_drawplane(_prplane* plane)
 
     if (pr_nullrender >= 1) return;
 
+	if (rhiType == RHI_D3D12) {
+		//materialbits = polymer_bindmaterial(&plane->material, plane->lights, plane->lightcount);
+		//
+		//GL_DrawBuffer(plane->indexoffset, plane->numindexes);
+		//
+		//polymer_unbindmaterial(materialbits);
+
+		int startIndex = plane->indexoffset;
+		int numIndexes = plane->numindexes;
+		memcpy(((unsigned char*)prd3d12_index_buffer->cpu_mapped_address) + (startIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
+		return;
+	}
+
     // debug code for drawing plane inverse TBN
 //     glDisable(GL_TEXTURE_2D);
 //     glBegin(GL_LINES);
@@ -2471,6 +2282,9 @@ static void         polymer_freeboard(void)
 {
     int32_t         i;
 
+	numBoardVertexes = 0;
+	numBoardIndexes = 0;
+
     i = 0;
     while (i < MAXSECTORS)
     {
@@ -2575,18 +2389,29 @@ static int32_t      polymer_initsector(int16_t sectnum)
     s->ceil.buffer = (_prvert *)Xcalloc(sec->wallnum, sizeof(_prvert));
     s->ceil.vertcount = sec->wallnum;
 
-    glGenBuffers(1, &s->floor.vbo);
-    glGenBuffers(1, &s->ceil.vbo);
-    glGenBuffers(1, &s->floor.ivbo);
-    glGenBuffers(1, &s->ceil.ivbo);
+	if (rhiType == RHI_OPENGL)
+	{
+		glGenBuffers(1, &s->floor.vbo);
+		glGenBuffers(1, &s->ceil.vbo);
+		glGenBuffers(1, &s->floor.ivbo);
+		glGenBuffers(1, &s->ceil.ivbo);
 
-    glBindBuffer(GL_ARRAY_BUFFER, s->floor.vbo);
-    glBufferData(GL_ARRAY_BUFFER, sec->wallnum * sizeof(GLfloat) * 5, NULL, mapvbousage);
+		glBindBuffer(GL_ARRAY_BUFFER, s->floor.vbo);
+		glBufferData(GL_ARRAY_BUFFER, sec->wallnum * sizeof(GLfloat) * 5, NULL, mapvbousage);
 
-    glBindBuffer(GL_ARRAY_BUFFER, s->ceil.vbo);
-    glBufferData(GL_ARRAY_BUFFER, sec->wallnum * sizeof(GLfloat) * 5, NULL, mapvbousage);
+		glBindBuffer(GL_ARRAY_BUFFER, s->ceil.vbo);
+		glBufferData(GL_ARRAY_BUFFER, sec->wallnum * sizeof(GLfloat) * 5, NULL, mapvbousage);
 
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+	}
+	else
+	{
+		s->floor.vertoffset = -1;
+		s->floor.indexoffset = -1;
+
+		s->ceil.vertoffset = -1;
+		s->ceil.indexoffset = -1;
+	}
 
     s->flags.empty = 1; // let updatesector know that everything needs to go
 
@@ -2653,7 +2478,9 @@ static int32_t      polymer_updatesector(int16_t sectnum)
             (sec->floorheinum != s->floorheinum) ||
             (sec->ceilingheinum != s->ceilingheinum))
     {
-        wallinvalidate = 1;
+// jmarshall: added needfloor here, fixes floor not being invalidated when it moves on the z-axis.
+		needfloor = wallinvalidate = 1;
+// jmarshall end
 
         wal = &wall[sec->wallptr];
         i = 0;
@@ -2805,14 +2632,17 @@ attributes:
                 s->floor.mapvbo_vertoffset = sec->wallptr * 2;
                 s->ceil.mapvbo_vertoffset = s->floor.mapvbo_vertoffset + sec->wallnum;
 
-                GLintptr sector_offset = s->floor.mapvbo_vertoffset * sizeof(_prvert);
-                GLsizeiptr cur_sector_size = sec->wallnum * sizeof(_prvert);
-                glBindBuffer(GL_ARRAY_BUFFER, prmapvbo);
-                // floor
-                glBufferSubData(GL_ARRAY_BUFFER, sector_offset, cur_sector_size, s->floor.buffer);
-                // ceiling
-                glBufferSubData(GL_ARRAY_BUFFER, sector_offset + cur_sector_size, cur_sector_size, s->ceil.buffer);
-                glBindBuffer(GL_ARRAY_BUFFER, 0);
+                if (rhiType == RHI_OPENGL)
+                {
+                    GLintptr sector_offset = s->floor.mapvbo_vertoffset * sizeof(_prvert);
+                    GLsizeiptr cur_sector_size = sec->wallnum * sizeof(_prvert);
+                    glBindBuffer(GL_ARRAY_BUFFER, prmapvbo);
+                    // floor
+                    glBufferSubData(GL_ARRAY_BUFFER, sector_offset, cur_sector_size, s->floor.buffer);
+                    // ceiling
+                    glBufferSubData(GL_ARRAY_BUFFER, sector_offset + cur_sector_size, cur_sector_size, s->ceil.buffer);
+                    glBindBuffer(GL_ARRAY_BUFFER, 0);
+                }
             }
         }
         else
@@ -2857,29 +2687,103 @@ attributes:
 
 finish:
 
-    if (needfloor)
-    {
-        polymer_buildfloor(sectnum);
-        if ((pr_vbos > 0))
-        {
-            if (pr_nullrender < 2)
-            {
-                if (s->oldindicescount < s->indicescount)
-                {
-                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s->floor.ivbo);
-                    glBufferData(GL_ELEMENT_ARRAY_BUFFER, s->indicescount * sizeof(GLushort), NULL, mapvbousage);
-                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s->ceil.ivbo);
-                    glBufferData(GL_ELEMENT_ARRAY_BUFFER, s->indicescount * sizeof(GLushort), NULL, mapvbousage);
-                    s->oldindicescount = s->indicescount;
-                }
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s->floor.ivbo);
-                glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, s->indicescount * sizeof(GLushort), s->floor.indices);
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s->ceil.ivbo);
-                glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, s->indicescount * sizeof(GLushort), s->ceil.indices);
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-            }
-        }
-    }
+	if (needfloor)
+	{
+		polymer_buildfloor(sectnum);
+		if ((pr_vbos > 0))
+		{
+			if (pr_nullrender < 2)
+			{
+				if (rhiType == RHI_OPENGL)
+				{
+					if (s->oldindicescount < s->indicescount)
+					{
+						glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s->floor.ivbo);
+						glBufferData(GL_ELEMENT_ARRAY_BUFFER, s->indicescount * sizeof(GLushort), NULL, mapvbousage);
+						glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s->ceil.ivbo);
+						glBufferData(GL_ELEMENT_ARRAY_BUFFER, s->indicescount * sizeof(GLushort), NULL, mapvbousage);
+						s->oldindicescount = s->indicescount;
+					}
+					glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s->floor.ivbo);
+					glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, s->indicescount * sizeof(GLushort), s->floor.indices);
+					glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s->ceil.ivbo);
+					glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, s->indicescount * sizeof(GLushort), s->ceil.indices);
+					glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+				}
+				else
+				{
+					if (s->floor.vertoffset == -1)
+					{
+						s->floor.vertoffset = numBoardVertexes;
+						s->floor.indexoffset = numBoardIndexes;
+						s->floor.numindexes = s->floor.indicescount;
+
+						numBoardVertexes += sec->wallnum;
+						numBoardIndexes += s->floor.indicescount;
+					}
+
+					{
+						for (int i = 0; i < sec->wallnum; i++)
+						{
+							Vertex v;
+
+							v.position[0] = s->floor.buffer[i].x;
+							v.position[1] = s->floor.buffer[i].y;
+							v.position[2] = s->floor.buffer[i].z;
+
+							v.st[0] = s->floor.buffer[i].u;
+							v.st[1] = s->floor.buffer[i].v;
+
+							board_vertexes[s->floor.vertoffset + i] = v;
+						}
+
+						for (int i = 0; i < s->floor.indicescount; i++)
+						{
+							//board_indexes.push_back(s->floor.indices[i] + s->floor.vertoffset);
+							board_indexes_table[s->floor.indexoffset + i] = s->floor.indices[i] + s->floor.vertoffset;
+						}
+					}
+
+					polymer_uploadverts(s->floor.material.tilenum, s->floor.vertoffset, sec->wallnum, s->floor.indexoffset, s->floor.indicescount, s->floor.material.shadeoffset, s->floor.material.visibility, s->floorpal);
+
+					if (s->ceil.vertoffset == -1)
+					{
+						s->ceil.vertoffset = numBoardVertexes;
+						s->ceil.indexoffset = numBoardIndexes;
+						s->ceil.numindexes = s->ceil.indicescount;
+
+						numBoardVertexes += sec->wallnum;
+						numBoardIndexes += s->ceil.indicescount;
+					}
+
+					for (int i = 0; i < sec->wallnum; i++)
+					{
+						Vertex v;
+
+						v.position[0] = s->ceil.buffer[i].x;
+						v.position[1] = s->ceil.buffer[i].y;
+						v.position[2] = s->ceil.buffer[i].z;
+
+						v.st[0] = s->ceil.buffer[i].u;
+						v.st[1] = s->ceil.buffer[i].v;
+
+						//v.normal.x = s->ceil.buffer->normal[0];
+						//v.normal.y = s->ceil.buffer->normal[1];
+						//v.normal.z = s->ceil.buffer->normal[2];
+
+						board_vertexes[s->ceil.vertoffset + i] = v;
+					}
+
+					for (int i = 0; i < s->ceil.indicescount; i++)
+					{
+						board_indexes_table[s->ceil.indexoffset + i] = s->ceil.indices[i] + s->ceil.vertoffset;
+					}
+
+					polymer_uploadverts(s->ceil.material.tilenum, s->ceil.vertoffset, sec->wallnum, s->ceil.indexoffset, s->ceil.indicescount, s->ceil.material.shadeoffset, s->ceil.material.visibility, s->ceilingpal);
+				}
+			}
+		}
+	}
 
     if (wallinvalidate)
     {
@@ -3087,24 +2991,31 @@ static int32_t      polymer_initwall(int16_t wallnum)
     //if (w->cap == NULL)
     //    w->cap = (GLfloat *)Xmalloc(4 * sizeof(GLfloat) * 3);
 
-    glGenBuffers(1, &w->wall.vbo);
-    glGenBuffers(1, &w->over.vbo);
-    glGenBuffers(1, &w->mask.vbo);
-    glGenBuffers(1, &w->stuffvbo);
+	if (rhiType == RHI_OPENGL)
+	{
+		glGenBuffers(1, &w->wall.vbo);
+		glGenBuffers(1, &w->over.vbo);
+		glGenBuffers(1, &w->mask.vbo);
+		glGenBuffers(1, &w->stuffvbo);
 
-    glBindBuffer(GL_ARRAY_BUFFER, w->wall.vbo);
-    glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(GLfloat) * 5, NULL, mapvbousage);
+		glBindBuffer(GL_ARRAY_BUFFER, w->wall.vbo);
+		glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(GLfloat) * 5, NULL, mapvbousage);
 
-    glBindBuffer(GL_ARRAY_BUFFER, w->over.vbo);
-    glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(GLfloat) * 5, NULL, mapvbousage);
+		glBindBuffer(GL_ARRAY_BUFFER, w->over.vbo);
+		glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(GLfloat) * 5, NULL, mapvbousage);
 
-    glBindBuffer(GL_ARRAY_BUFFER, w->mask.vbo);
-    glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(GLfloat) * 5, NULL, mapvbousage);
+		glBindBuffer(GL_ARRAY_BUFFER, w->mask.vbo);
+		glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(GLfloat) * 5, NULL, mapvbousage);
 
-    glBindBuffer(GL_ARRAY_BUFFER, w->stuffvbo);
-    glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(GLfloat) * 5, NULL, mapvbousage);
+		glBindBuffer(GL_ARRAY_BUFFER, w->stuffvbo);
+		glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(GLfloat) * 5, NULL, mapvbousage);
 
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+	}
+
+	w->wall.vertoffset = -1;
+	w->over.vertoffset = -1;
+	w->mask.vertoffset = -1;
 
     w->flags.empty = 1;
 
@@ -3537,17 +3448,141 @@ static void         polymer_updatewall(int16_t wallnum)
             const GLintptr thiswalloffset = prwalldataoffset + (prwalldatasize * wallnum);
             const GLintptr thisoveroffset = thiswalloffset + proneplanesize;
             const GLintptr thismaskoffset = thisoveroffset + proneplanesize;
-            glBindBuffer(GL_ARRAY_BUFFER, prmapvbo);
-            glBufferSubData(GL_ARRAY_BUFFER, thiswalloffset, proneplanesize, w->wall.buffer);
-            glBindBuffer(GL_ARRAY_BUFFER, prmapvbo);
-            if (w->over.buffer)
-                glBufferSubData(GL_ARRAY_BUFFER, thisoveroffset, proneplanesize, w->over.buffer);
-            glBindBuffer(GL_ARRAY_BUFFER, prmapvbo);
-            glBufferSubData(GL_ARRAY_BUFFER, thismaskoffset, proneplanesize, w->mask.buffer);
-            glBindBuffer(GL_ARRAY_BUFFER, w->stuffvbo);
-            glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(GLfloat)* 5, w->bigportal);
-            //glBufferSubData(GL_ARRAY_BUFFER, 4 * sizeof(GLfloat)* 5, 4 * sizeof(GLfloat)* 3, w->cap);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            if (rhiType == RHI_OPENGL)
+            {
+                glBindBuffer(GL_ARRAY_BUFFER, prmapvbo);
+                glBufferSubData(GL_ARRAY_BUFFER, thiswalloffset, proneplanesize, w->wall.buffer);
+                glBindBuffer(GL_ARRAY_BUFFER, prmapvbo);
+                if (w->over.buffer)
+                    glBufferSubData(GL_ARRAY_BUFFER, thisoveroffset, proneplanesize, w->over.buffer);
+                glBindBuffer(GL_ARRAY_BUFFER, prmapvbo);
+                glBufferSubData(GL_ARRAY_BUFFER, thismaskoffset, proneplanesize, w->mask.buffer);
+                glBindBuffer(GL_ARRAY_BUFFER, w->stuffvbo);
+                glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(GLfloat) * 5, w->bigportal);
+                //glBufferSubData(GL_ARRAY_BUFFER, 4 * sizeof(GLfloat)* 5, 4 * sizeof(GLfloat)* 3, w->cap);
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+            }
+			else
+			{
+				int32_t         parallaxedfloor = 0, parallaxedceiling = 0;
+
+				unsigned short indexes[6] = { 0, 1, 2, 3, 0, 2 };
+				if (w->wall.vertoffset == -1)
+				{
+					w->wall.vertoffset = numBoardVertexes;
+					w->wall.indexoffset = numBoardIndexes;
+					w->wall.numindexes = 6;
+
+					numBoardVertexes += 4;
+					numBoardIndexes += 6;
+				}
+
+				if ((sec->floorstat & 1) && (wal->nextsector >= 0) &&
+					(sector[wal->nextsector].floorstat & 1))
+					parallaxedfloor = 1;
+
+				if ((sec->ceilingstat & 1) && (wal->nextsector >= 0) &&
+					(sector[wal->nextsector].ceilingstat & 1))
+					parallaxedceiling = 1;
+
+				if ((w->underover & 1) && (!parallaxedfloor || (searchit == 2)))
+				{
+					for (int i = 0; i < 4; i++)
+					{
+						Vertex v;
+
+						v.position[0] = w->wall.buffer[i].x;
+						v.position[1] = w->wall.buffer[i].y;
+						v.position[2] = w->wall.buffer[i].z;
+
+						v.st[0] = w->wall.buffer[i].u;
+						v.st[1] = w->wall.buffer[i].v;
+
+						board_vertexes[w->wall.vertoffset + i] = v;
+					}
+
+
+					for (int i = 0; i < 6; i++)
+					{
+						board_indexes_table[w->wall.indexoffset + i] = (indexes[i] + w->wall.vertoffset);
+					}
+
+					polymer_uploadverts(w->wall.material.tilenum, w->wall.vertoffset, 4, w->wall.indexoffset, 6, w->wall.material.shadeoffset, w->wall.material.visibility, w->pal);
+				}
+
+				if ((w->underover & 2) && (!parallaxedceiling || (searchit == 2)))
+				{
+					if (w->over.vertoffset == -1)
+					{
+						w->over.vertoffset = numBoardVertexes;
+						w->over.indexoffset = numBoardIndexes;
+						w->over.numindexes = 6;
+
+						numBoardVertexes += 4;
+						numBoardIndexes += 6;
+					}
+					if (w->over.buffer)
+					{
+						for (int i = 0; i < 4; i++)
+						{
+							Vertex v;
+
+							v.position[0] = w->over.buffer[i].x;
+							v.position[1] = w->over.buffer[i].y;
+							v.position[2] = w->over.buffer[i].z;
+
+							v.st[0] = w->over.buffer[i].u;
+							v.st[1] = w->over.buffer[i].v;
+
+							board_vertexes[w->over.vertoffset + i] = v;
+						}
+					}
+
+					for (int i = 0; i < 6; i++)
+					{
+						board_indexes_table[w->over.indexoffset + i] = (indexes[i] + w->over.vertoffset);
+					}
+
+					polymer_uploadverts(w->over.material.tilenum, w->over.vertoffset, 4, w->over.indexoffset, 6, w->over.material.shadeoffset, w->over.material.visibility, w->pal);
+				}
+
+				// Masks
+				if (w->mask.bucket != NULL)
+				{
+					if (w->mask.vertoffset == -1)
+					{
+						w->mask.vertoffset = numBoardVertexes;
+						w->mask.indexoffset = numBoardIndexes;
+						w->mask.numindexes = 6;
+
+						numBoardVertexes += 4;
+						numBoardIndexes += 6;
+					}
+					if (w->mask.buffer)
+					{
+						for (int i = 0; i < 4; i++)
+						{
+							Vertex v;
+
+							v.position[0] = w->mask.buffer[i].x;
+							v.position[1] = w->mask.buffer[i].y;
+							v.position[2] = w->mask.buffer[i].z;
+
+							v.st[0] = w->mask.buffer[i].u;
+							v.st[1] = w->mask.buffer[i].v;
+
+							board_vertexes[w->mask.vertoffset + i] = v;
+						}
+					}
+
+					for (int i = 0; i < 6; i++)
+					{
+						board_indexes_table[w->mask.indexoffset + i] = (indexes[i] + w->mask.vertoffset);
+					}
+
+					polymer_uploadverts(w->mask.material.tilenum, w->mask.vertoffset, 4, w->mask.indexoffset, 6, w->mask.material.shadeoffset, w->mask.material.visibility, w->pal);
+				}
+			}
 
             w->wall.mapvbo_vertoffset = thiswalloffset / sizeof(_prvert);
             w->over.mapvbo_vertoffset = thisoveroffset / sizeof(_prvert);
@@ -3860,6 +3895,243 @@ static inline void  polymer_scansprites(int16_t sectnum, tspriteptr_t localtspri
     }
 }
 
+void polymer_updatesprited3d12(int32_t snum) {
+	int32_t         curpicnum, xsize, ysize, i, j;
+	int32_t         tilexoff, tileyoff, xoff, yoff, centeryoff = 0;
+	float           xratio, yratio, ang, f;
+	float           spos[3];
+	uint8_t         flipu, flipv;
+	tspritetype* tspr = tspriteptr[snum];
+
+	curpicnum = tspr->picnum;
+	//DO_TILE_ANIM(curpicnum, tspr->owner + 32768);
+
+	bool			usehightile = true;
+	const _prvert* inbuffer;
+	const uint32_t cs = tspr->cstat;
+	const uint32_t alignmask = (cs & SPR_ALIGN_MASK);
+	const uint8_t flooraligned = (alignmask == SPR_FLOOR);
+
+	if (tspr->owner < 0 || tspr->picnum < 0) return;
+
+	if (tspr->sectnum == MAXSECTORS)
+		return;
+
+	//if ((tspr->cstat & 8192) )
+	//	return;
+
+	//if ((tspr->cstat & 16384) && buildNGOptions.shouldUseHighSpriteValueHide)
+	//	return false;
+
+	_prsprite* sprite = prsprites[tspr->owner];;
+	if (sprite == NULL)
+	{
+		sprite = prsprites[tspr->owner] = (_prsprite*)Xcalloc(sizeof(_prsprite), 1);
+
+		sprite->plane.buffer = (_prvert*)Xcalloc(4, sizeof(_prvert));  // XXX
+		sprite->plane.vertcount = 4;
+		sprite->plane.mapvbo_vertoffset = -1;
+		sprite->hash = 0xDEADBEEF;
+	}
+
+	if (((tspr->cstat >> 4) & 3) == 0)
+		xratio = (float)(tspr->xrepeat) * 0.20f; // 32 / 160
+	else
+		xratio = (float)(tspr->xrepeat) * 0.25f;
+
+	yratio = (float)(tspr->yrepeat) * 0.25f;
+
+	xsize = tilesiz[curpicnum].x;
+	ysize = tilesiz[curpicnum].y;
+
+	if (usehightile && h_xsize[curpicnum])
+	{
+		xsize = h_xsize[curpicnum];
+		ysize = h_ysize[curpicnum];
+	}
+
+	xsize = (int32_t)(xsize * xratio);
+	ysize = (int32_t)(ysize * yratio);
+
+	tilexoff = (int32_t)tspr->xoffset;
+	tileyoff = (int32_t)tspr->yoffset;
+	tilexoff += (usehightile && h_xsize[curpicnum]) ? h_xoffs[curpicnum] : picanm[curpicnum].xofs;
+	tileyoff += (usehightile && h_xsize[curpicnum]) ? h_yoffs[curpicnum] : picanm[curpicnum].yofs;
+
+	xoff = (int32_t)(tilexoff * xratio);
+	yoff = (int32_t)(tileyoff * yratio);
+
+	if ((tspr->cstat & 128) && !flooraligned)
+	{
+		if (alignmask == 0)
+			yoff -= ysize / 2;
+		else
+			centeryoff = ysize / 2;
+	}
+
+	spos[0] = (float)tspr->y;
+	spos[1] = -(float)(tspr->z) / 16.0f;
+	spos[2] = -(float)tspr->x;
+
+
+	{
+
+		const uint8_t xflip = !!(cs & SPR_XFLIP);
+		const uint8_t yflip = !!(cs & SPR_YFLIP);
+
+		// Initially set flipu and flipv.
+		flipu = (xflip ^ flooraligned);
+		flipv = (yflip && !flooraligned);
+
+		if (pr_billboardingmode && alignmask == 0)
+		{
+			// do surgery on the face tspr to make it look like a wall sprite
+			tspr->cstat |= 16;
+			tspr->ang = (fix16_to_int(viewangle) + 1024) & 2047;
+		}
+
+		if (flipu)
+			xoff = -xoff;
+
+		if (yflip && alignmask != 0)
+			yoff = -yoff;
+	}
+
+	float4x4 modelMatrix;
+
+	modelMatrix = float4x4Identity();
+	//sprite->isHorizsprite = false;
+
+	switch (tspr->cstat & SPR_ALIGN_MASK)
+	{
+	case 0:
+		ang = (float)((viewangle) & 2047) / (2048.0f / 360.0f);
+
+		modelMatrix = modelMatrix * float4x4Translation(spos[0], spos[1], spos[2]);
+		_math_matrix_rotate(modelMatrix, -ang, 0.0f, 1.0f, 0.0f);
+		_math_matrix_rotate(modelMatrix, -horizang, 1.0f, 0.0f, 0.0f);
+		modelMatrix = modelMatrix * float4x4Translation((float)(-xoff), (float)(yoff), 0.0f);
+		modelMatrix = modelMatrix * float4x4Scale((float)(xsize), (float)(ysize), 1.0f);
+		break;
+	case SPR_WALL:
+		ang = (float)((tspr->ang + 1024) & 2047) / (2048.0f / 360.0f);
+
+		modelMatrix = modelMatrix * float4x4Translation(spos[0], spos[1], spos[2]);
+		_math_matrix_rotate(modelMatrix, -ang, 0.0f, 1.0f, 0.0f);
+		modelMatrix = modelMatrix * float4x4Translation((float)(-xoff), (float)(yoff - centeryoff), 0.0f);
+		modelMatrix = modelMatrix * float4x4Scale((float)(xsize), (float)(ysize), 1.0f);
+		//sprite->isWallSprite = true;
+		break;
+	case SPR_FLOOR:
+		ang = (float)((tspr->ang + 1024) & 2047) / (2048.0f / 360.0f);
+
+		modelMatrix = modelMatrix * float4x4Translation(spos[0], spos[1], spos[2]);
+		_math_matrix_rotate(modelMatrix, -ang, 0.0f, 1.0f, 0.0f);
+		modelMatrix = modelMatrix * float4x4Translation((float)(-xoff), 1.0f, (float)(yoff));
+		modelMatrix = modelMatrix * float4x4Scale((float)(xsize), 1.0f, (float)(ysize));
+
+		//	sprite->isHorizsprite = true;
+		break;
+	}
+
+
+	inbuffer = vertsprite;
+
+	float4x4 _spriteModelView = modelMatrix;
+	memcpy(spritemodelview, &_spriteModelView, sizeof(float) * 16);
+
+	Bmemcpy(sprite->plane.buffer, inbuffer, sizeof(_prvert) * 4);
+
+	if (flipu || flipv)
+	{
+		i = 0;
+		do
+		{
+			if (flipu)
+				sprite->plane.buffer[i].u =
+				(sprite->plane.buffer[i].u - 1.0f) * -1.0f;
+			if (flipv)
+				sprite->plane.buffer[i].v =
+				(sprite->plane.buffer[i].v - 1.0f) * -1.0f;
+		} while (++i < 4);
+	}
+
+	i = 0;
+	do
+		polymer_transformpoint(&inbuffer[i].x, &sprite->plane.buffer[i].x, spritemodelview);
+	while (++i < 4);
+
+	polymer_computeplane(&sprite->plane);
+
+	int startVertex = POLYMER_DX12_STARTSPRITEVERT + numSpriteVertexes;
+	int startIndex = POLYMER_DX12_STARTSPRITEINDEX + numSpriteIndxes;
+
+	_prplane* plane = &sprite->plane;
+
+	for (i = 0; i < plane->vertcount; i++, numSpriteVertexes++) {
+		board_vertexes[startVertex + i].position[0] = plane->buffer[i].x;
+		board_vertexes[startVertex + i].position[1] = plane->buffer[i].y;
+		board_vertexes[startVertex + i].position[2] = plane->buffer[i].z;
+
+		board_vertexes[startVertex + i].st[0] = plane->buffer[i].u;
+		board_vertexes[startVertex + i].st[1] = plane->buffer[i].v;
+	}
+
+	if (plane->indicescount == NULL) {
+		for (i = 0; i < 6; i++, numSpriteIndxes++) {
+			static const uint32_t quadindices[6] = { 0, 1, 2, 0, 2, 3 };
+			board_indexes_table[startIndex + i] = startVertex + quadindices[i];
+		}
+	}
+	else {
+		for (i = 0; i < plane->indicescount; i++, numSpriteIndxes++) {
+			board_indexes_table[startIndex + i] = plane->indices[i] + startVertex;
+		}
+	}
+
+	pthtyp* pth = texcache_fetch(tspr->picnum, 0, 0, DAMETH_NOMASK);
+
+	GL_BindTexture(pth->d3dpic, 0);
+
+	int numIndexes = -1;
+
+	int vis = (uint8_t)(sector[tspr->sectnum].visibility + 16);
+
+	polymer_getbuildmaterial(&sprite->plane.material, curpicnum, tspr->pal, tspr->shade,
+		sector[tspr->sectnum].visibility, DAMETH_MASK | DAMETH_CLAMPED);
+
+	if (plane->indicescount == NULL) {
+		numIndexes = 6;
+		GL_DrawBuffer(startIndex, 6);
+		polymer_uploadverts(tspr->picnum, startVertex, sprite->plane.vertcount, startIndex, 6, sprite->plane.material.shadeoffset, sprite->plane.material.visibility, tspr->pal);
+	}
+	else {
+		numIndexes = sprite->plane.indicescount;
+		GL_DrawBuffer(startIndex, sprite->plane.indicescount);
+		polymer_uploadverts(tspr->picnum, startVertex, sprite->plane.vertcount, startIndex, sprite->plane.indicescount, sprite->plane.material.shadeoffset, sprite->plane.material.visibility, tspr->pal);
+	}
+
+	memcpy(((unsigned char*)prd3d12_index_buffer->cpu_mapped_address) + (startIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
+
+	//	sprite->plane.visibility = sector[tspr->sectnum].visibility;
+	//	sprite->plane.shadeNum = tspr->shade;
+	//	//Build3D::CalculateFogForPlane(sprite->plane.tileNum, sprite->plane.shadeNum, sprite->plane.visibility, sprite->plane.paletteNum, &sprite->plane);
+	//
+	//#if !POLYMERNG_NOSYNC_SPRITES
+	//	float4x4 mvp = projectionMatrix * (viewMatrix * modelMatrix);
+	//#else
+	//	float4x4 mvp = projectionMatrix * (viewMatrix);
+	//#endif
+	//	sprite->modelViewProjectionMatrix = mvp;
+	//	sprite->modelMatrix = modelMatrix;
+	//	sprite->ViewMatrix = viewMatrix;
+	//
+	//
+	//	float4x4 modelViewInverseMatrix = viewMatrix;
+	//	modelViewInverseMatrix.invert();
+	//	sprite->modelViewInverse = modelViewInverseMatrix;
+}
+
 void                polymer_updatesprite(int32_t snum)
 {
     int32_t         xsize, ysize, i, j;
@@ -3980,9 +4252,14 @@ void                polymer_updatesprite(int32_t snum)
     spos[1] = -(float)(tspr->z) / 16.0f;
     spos[2] = -(float)tspr->x;
 
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
+	if (rhiType == RHI_OPENGL) {
+		glMatrixMode(GL_MODELVIEW);
+		glPushMatrix();
+		glLoadIdentity();
+	}
+	else {
+		GL_SetModelViewToIdentity();
+	}
 
     inbuffer = vertsprite;
 
@@ -4165,13 +4442,28 @@ void         polymer_drawsky(int16_t tilenum, char palnum, int8_t shade)
     pos[1] = fglobalposz * (-1.f/16.f);
     pos[2] = -fglobalposx;
 
-    glPushMatrix();
-    glLoadIdentity();
+	if (rhiType == RHI_OPENGL)
+	{
+		glPushMatrix();
+		glLoadIdentity();
 
-    glLoadMatrixf(curskymodelviewmatrix);
+		glLoadMatrixf(curskymodelviewmatrix);
 
-    glTranslatef(pos[0], pos[1], pos[2]);
-    glScalef(1000.0f, 1000.0f, 1000.0f);
+		glTranslatef(pos[0], pos[1], pos[2]);
+		glScalef(1000.0f, 1000.0f, 1000.0f);
+	}
+	else
+	{
+		float4x4 skyViewMatrix(skyMatrix);
+
+		float4x4 translationMatrix = float4x4Translation(pos[0], pos[1], pos[2]);
+		skyViewMatrix = skyViewMatrix * translationMatrix;
+
+		float4x4 scaleMatrix = float4x4Scale(1000.0f, 1000.0f, 1000.0f);
+		skyViewMatrix = skyViewMatrix * scaleMatrix;
+
+		GL_SetModelViewMatrix((float*)&skyViewMatrix);
+	}
 
     drawingskybox = 1;
     pth = texcache_fetch(tilenum, 0, 0, DAMETH_NOMASK);
@@ -4182,7 +4474,12 @@ void         polymer_drawsky(int16_t tilenum, char palnum, int8_t shade)
     else
         polymer_drawartsky(tilenum, palnum, shade);
 
-    glPopMatrix();
+	if (rhiType == RHI_OPENGL) {
+		glPopMatrix();
+	}
+	else if (rhiType == RHI_D3D12) {
+		GL_SetModelViewMatrix((float*)&viewMatrix);
+	}
 }
 
 static void         polymer_initartsky(void)
@@ -4250,7 +4547,9 @@ static void         polymer_drawartsky(int16_t tilenum, char palnum, int8_t shad
         i++;
     }
 
-    glEnable(GL_TEXTURE_2D);
+    if (rhiType == RHI_OPENGL) {
+        glEnable(GL_TEXTURE_2D);
+    }
     i = 0;
     j = 0;
     int32_t const increment = PSKYOFF_MAX>>max(3, dapskybits);  // In Polymer, an ART sky has 8 or 16 sides...
@@ -4260,38 +4559,81 @@ static void         polymer_drawartsky(int16_t tilenum, char palnum, int8_t shad
         // ... but in case a multi-psky specifies less than 8, repeat cyclically:
         const int8_t tileofs = j&numskytilesm1;
 
-        glColor4f(glcolors[tileofs][0], glcolors[tileofs][1], glcolors[tileofs][2], 1.0f);
-        glBindTexture(GL_TEXTURE_2D, glpics[tileofs]);
+		if (rhiType == RHI_OPENGL)
+		{
+			glColor4f(glcolors[tileofs][0], glcolors[tileofs][1], glcolors[tileofs][2], 1.0f);
+			glBindTexture(GL_TEXTURE_2D, glpics[tileofs]);
 
-        glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, &oldswrap);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, glinfo.clamptoedge?GL_CLAMP_TO_EDGE:GL_CLAMP);
+			glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, &oldswrap);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, glinfo.clamptoedge ? GL_CLAMP_TO_EDGE : GL_CLAMP);
+		}
 
-        polymer_drawartskyquad(i, (i + increment) & (PSKYOFF_MAX - 1), height);
+		polymer_drawartskyquad(tilenum + tileofs, i, (i + 1) & (j - 1), height);
 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, oldswrap);
+		if (rhiType == RHI_OPENGL)
+		{
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, oldswrap);
+		}
 
         i += increment;
         ++j;
     }
-    glDisable(GL_TEXTURE_2D);
+    if (rhiType == RHI_OPENGL)
+    {
+        glDisable(GL_TEXTURE_2D);
+    }
 }
 
-static void         polymer_drawartskyquad(int32_t p1, int32_t p2, GLfloat height)
+static void         polymer_drawartskyquad(int32_t picnum, int32_t p1, int32_t p2, GLfloat height)
 {
-    glBegin(GL_QUADS);
-    glTexCoord2f(0.0f, 0.0f);
-    //OSD_Printf("PR: drawing %f %f %f\n", skybox[(p1 * 2) + 1], height, skybox[p1 * 2]);
-    glVertex3f(artskydata[(p1 * 2) + 1], height, artskydata[p1 * 2]);
-    glTexCoord2f(0.0f, 1.0f);
-    //OSD_Printf("PR: drawing %f %f %f\n", skybox[(p1 * 2) + 1], -height, skybox[p1 * 2]);
-    glVertex3f(artskydata[(p1 * 2) + 1], -height, artskydata[p1 * 2]);
-    glTexCoord2f(1.0f, 1.0f);
-    //OSD_Printf("PR: drawing %f %f %f\n", skybox[(p2 * 2) + 1], -height, skybox[p2 * 2]);
-    glVertex3f(artskydata[(p2 * 2) + 1], -height, artskydata[p2 * 2]);
-    glTexCoord2f(1.0f, 0.0f);
-    //OSD_Printf("PR: drawing %f %f %f\n", skybox[(p2 * 2) + 1], height, skybox[p2 * 2]);
-    glVertex3f(artskydata[(p2 * 2) + 1], height, artskydata[p2 * 2]);
-    glEnd();
+	if (rhiType == RHI_OPENGL)
+	{
+		glBegin(GL_QUADS);
+		glTexCoord2f(0.0f, 0.0f);
+		//OSD_Printf("PR: drawing %f %f %f\n", skybox[(p1 * 2) + 1], height, skybox[p1 * 2]);
+		glVertex3f(artskydata[(p1 * 2) + 1], height, artskydata[p1 * 2]);
+		glTexCoord2f(0.0f, 1.0f);
+		//OSD_Printf("PR: drawing %f %f %f\n", skybox[(p1 * 2) + 1], -height, skybox[p1 * 2]);
+		glVertex3f(artskydata[(p1 * 2) + 1], -height, artskydata[p1 * 2]);
+		glTexCoord2f(1.0f, 1.0f);
+		//OSD_Printf("PR: drawing %f %f %f\n", skybox[(p2 * 2) + 1], -height, skybox[p2 * 2]);
+		glVertex3f(artskydata[(p2 * 2) + 1], -height, artskydata[p2 * 2]);
+		glTexCoord2f(1.0f, 0.0f);
+		//OSD_Printf("PR: drawing %f %f %f\n", skybox[(p2 * 2) + 1], height, skybox[p2 * 2]);
+		glVertex3f(artskydata[(p2 * 2) + 1], height, artskydata[p2 * 2]);
+		glEnd();
+	}
+	else
+	{
+		float artSkyVertexes[4][5];
+#define ARTSKY_SCALE 1
+
+		artSkyVertexes[0][0] = artskydata[(p1 * 2) + 1] * ARTSKY_SCALE;
+		artSkyVertexes[0][1] = height * ARTSKY_SCALE;
+		artSkyVertexes[0][2] = artskydata[p1 * 2] * ARTSKY_SCALE;
+		artSkyVertexes[0][3] = 0.0f;
+		artSkyVertexes[0][4] = 0.0f;
+
+		artSkyVertexes[1][0] = artskydata[(p1 * 2) + 1] * ARTSKY_SCALE;
+		artSkyVertexes[1][1] = -height * ARTSKY_SCALE;
+		artSkyVertexes[1][2] = artskydata[p1 * 2] * ARTSKY_SCALE;
+		artSkyVertexes[1][3] = 0.0f;
+		artSkyVertexes[1][4] = 1.0f;
+
+		artSkyVertexes[2][0] = artskydata[(p2 * 2) + 1] * ARTSKY_SCALE;
+		artSkyVertexes[2][1] = -height * ARTSKY_SCALE;
+		artSkyVertexes[2][2] = artskydata[p2 * 2] * ARTSKY_SCALE;
+		artSkyVertexes[2][3] = 1.0f;
+		artSkyVertexes[2][4] = 1.0f;
+
+		artSkyVertexes[3][0] = artskydata[(p2 * 2) + 1] * ARTSKY_SCALE;
+		artSkyVertexes[3][1] = height * ARTSKY_SCALE;
+		artSkyVertexes[3][2] = artskydata[p2 * 2] * ARTSKY_SCALE;
+		artSkyVertexes[3][3] = 1.0f;
+		artSkyVertexes[3][4] = 0.0f;
+
+		GL_DrawBuffer(picnum, &artSkyVertexes[0][0], 4);
+	}
 }
 
 static void         polymer_drawskybox(int16_t tilenum, char palnum, int8_t shade)
@@ -4300,14 +4642,17 @@ static void         polymer_drawskybox(int16_t tilenum, char palnum, int8_t shad
     int32_t         i;
     GLfloat         color[3];
 
-    if ((pr_vbos > 0) && (skyboxdatavbo == 0))
+    if (rhiType == RHI_OPENGL)
     {
-        glGenBuffers(1, &skyboxdatavbo);
+        if ((pr_vbos > 0) && (skyboxdatavbo == 0))
+        {
+            glGenBuffers(1, &skyboxdatavbo);
 
-        glBindBuffer(GL_ARRAY_BUFFER, skyboxdatavbo);
-        glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(GLfloat) * 5 * 6, skyboxdata, modelvbousage);
+            glBindBuffer(GL_ARRAY_BUFFER, skyboxdatavbo);
+            glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(GLfloat) * 5 * 6, skyboxdata, modelvbousage);
 
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+        }
     }
 
     if (pr_vbos > 0)
@@ -4345,19 +4690,27 @@ static void         polymer_drawskybox(int16_t tilenum, char palnum, int8_t shad
             globaltinting_apply(color);
         }
 
-        glColor4f(color[0], color[1], color[2], 1.0);
-        glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, pth ? pth->glpic : 0);
-        if (pr_vbos > 0)
+        if (rhiType == RHI_OPENGL)
         {
-            glVertexPointer(3, GL_FLOAT, 5 * sizeof(GLfloat), (GLfloat*)(4 * 5 * i * sizeof(GLfloat)));
-            glTexCoordPointer(2, GL_FLOAT, 5 * sizeof(GLfloat), (GLfloat*)(((4 * 5 * i) + 3) * sizeof(GLfloat)));
-        } else {
-            glVertexPointer(3, GL_FLOAT, 5 * sizeof(GLfloat), &skyboxdata[4 * 5 * i]);
-            glTexCoordPointer(2, GL_FLOAT, 5 * sizeof(GLfloat), &skyboxdata[3 + (4 * 5 * i)]);
+            glColor4f(color[0], color[1], color[2], 1.0);
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, pth ? pth->glpic : 0);
+            if (pr_vbos > 0)
+            {
+                glVertexPointer(3, GL_FLOAT, 5 * sizeof(GLfloat), (GLfloat*)(4 * 5 * i * sizeof(GLfloat)));
+                glTexCoordPointer(2, GL_FLOAT, 5 * sizeof(GLfloat), (GLfloat*)(((4 * 5 * i) + 3) * sizeof(GLfloat)));
+            }
+            else {
+                glVertexPointer(3, GL_FLOAT, 5 * sizeof(GLfloat), &skyboxdata[4 * 5 * i]);
+                glTexCoordPointer(2, GL_FLOAT, 5 * sizeof(GLfloat), &skyboxdata[3 + (4 * 5 * i)]);
+            }
+            glDrawArrays(GL_QUADS, 0, 4);
+            glDisable(GL_TEXTURE_2D);
         }
-        glDrawArrays(GL_QUADS, 0, 4);
-        glDisable(GL_TEXTURE_2D);
+		else if (rhiType == RHI_D3D12)
+		{
+			GL_DrawBuffer(tilenum, (float*)&skyboxdata[4 * 5 * i], 4);
+		}
 
         i++;
     }
@@ -4885,6 +5238,11 @@ static void         polymer_getscratchmaterial(_prmaterial* material)
 
 static void         polymer_setupartmap(int16_t tilenum, char pal)
 {
+	if (rhiType == RHI_D3D12) {
+		polymer_uploadnewpalette();
+		return;
+	}
+
     if (!prartmaps[tilenum]) {
         char *tilebuffer = (char *) waloff[tilenum];
         char *tempbuffer = (char *) Xmalloc(tilesiz[tilenum].x * tilesiz[tilenum].y);
@@ -4974,7 +5332,12 @@ static _prbucket*   polymer_getbuildmaterial(_prmaterial* material, int16_t tile
 
     if (pth)
     {
-        material->diffusemap = pth->glpic;
+		if (rhiType == RHI_OPENGL) {
+			material->diffusemap = pth->glpic;
+		}
+		else if (rhiType == RHI_D3D12) {
+			material->d3ddiffusemap = pth->d3dpic;
+		}
 
         if (pth->hicr)
         {
@@ -4984,6 +5347,8 @@ static _prbucket*   polymer_getbuildmaterial(_prmaterial* material, int16_t tile
     }
 
     int32_t usinghighpal = 0;
+
+    material->tilenum = tilenum;
 
     // Lazily fill in all the textures we need, move this to precaching later
     if (pr_artmapping && !(globalflags & GLOBAL_NO_GL_TILESHADES) && polymer_eligible_for_artmap(tilenum, pth))
@@ -5194,7 +5559,7 @@ static int32_t      polymer_bindmaterial(const _prmaterial *material, const int1
 
     // --------- program compiling
     if (!prprograms[programbits].handle)
-        polymer_compileprogram(programbits);
+        polymer_ogl_compileprogram(programbits);
 
     polymost_useShaderProgram(prprograms[programbits].handle);
 
@@ -5374,15 +5739,22 @@ static int32_t      polymer_bindmaterial(const _prmaterial *material, const int1
         texunit++;
     }
 
-    // PR_BIT_DIFFUSE_MODULATION
-    if (programbits & prprogrambits[PR_BIT_DIFFUSE_MODULATION].bit)
-    {
-            glColor4ub(material->diffusemodulation[0],
-                        material->diffusemodulation[1],
-                        material->diffusemodulation[2],
-                        material->diffusemodulation[3]);
-    }
-
+	// PR_BIT_DIFFUSE_MODULATION
+	if (programbits & prprogrambits[PR_BIT_DIFFUSE_MODULATION].bit)
+	{
+		if (rhiType == RHI_OPENGL) {
+			glColor4ub(material->diffusemodulation[0],
+				material->diffusemodulation[1],
+				material->diffusemodulation[2],
+				material->diffusemodulation[3]);
+		}
+		else {
+			GL_SetColor(material->diffusemodulation[0],
+				material->diffusemodulation[1],
+				material->diffusemodulation[2],
+				material->diffusemodulation[3]);
+		}
+	}
     // PR_BIT_SPECULAR_MAP
     if (programbits & prprogrambits[PR_BIT_SPECULAR_MAP].bit)
     {
@@ -5420,7 +5792,9 @@ static int32_t      polymer_bindmaterial(const _prmaterial *material, const int1
 #ifdef PR_LINEAR_FOG
     if (programbits & prprogrambits[PR_BIT_FOG].bit)
     {
-        glUniform1i(prprograms[programbits].uniform_linearFog, r_usenewshading >= 2);
+// jmarshall - fix me
+	  //  glUniform1i(prprograms[programbits].uniform_linearFog, r_usenewshading >= 2);
+// jmarshall - fix me
     }
 #endif
     // PR_BIT_GLOW_MAP
@@ -5529,20 +5903,25 @@ static int32_t      polymer_bindmaterial(const _prmaterial *material, const int1
             color[1] = -color[1];
             color[2] = -color[2];
         }
+		if (rhiType == RHI_OPENGL)
+		{
+			glLightfv(GL_LIGHT0, GL_AMBIENT, pos);
+			glLightfv(GL_LIGHT0, GL_DIFFUSE, color);
+			if (material->mdspritespace == GL_TRUE) {
+				float mdspritespacepos[3];
+				polymer_transformpoint(inpos, mdspritespacepos, (float*)mdspritespace);
+				glLightfv(GL_LIGHT0, GL_SPECULAR, mdspritespacepos);
+			}
+			else {
+				glLightfv(GL_LIGHT0, GL_SPECULAR, inpos);
+			}
+			glLightfv(GL_LIGHT0, GL_LINEAR_ATTENUATION, &range[1]);
+		}
+	}
 
-        glLightfv(GL_LIGHT0, GL_AMBIENT, pos);
-        glLightfv(GL_LIGHT0, GL_DIFFUSE, color);
-        if (material->mdspritespace == GL_TRUE) {
-            float mdspritespacepos[3];
-            polymer_transformpoint(inpos, mdspritespacepos, (float *)mdspritespace);
-            glLightfv(GL_LIGHT0, GL_SPECULAR, mdspritespacepos);
-        } else {
-            glLightfv(GL_LIGHT0, GL_SPECULAR, inpos);
-        }
-        glLightfv(GL_LIGHT0, GL_LINEAR_ATTENUATION, &range[1]);
-    }
-
-    glActiveTexture(GL_TEXTURE0);
+	if (rhiType == RHI_OPENGL) {
+		glActiveTexture(GL_TEXTURE0);
+	}
 
     return programbits;
 }
@@ -5574,193 +5953,6 @@ static void         polymer_unbindmaterial(int32_t programbits)
     }
 
     polymost_useShaderProgram(0);
-}
-
-static void         polymer_compileprogram(int32_t programbits)
-{
-    int32_t         i, enabledbits;
-    GLuint          vert, frag, program;
-    const GLchar*      source[PR_BIT_COUNT * 2];
-    GLchar       infobuffer[PR_INFO_LOG_BUFFER_SIZE];
-    GLint           linkstatus;
-
-    // --------- VERTEX
-    vert = glCreateShader(GL_VERTEX_SHADER);
-
-    enabledbits = i = 0;
-    while (i < PR_BIT_COUNT)
-    {
-        if (programbits & prprogrambits[i].bit)
-            source[enabledbits++] = prprogrambits[i].vert_def;
-        i++;
-    }
-    i = 0;
-    while (i < PR_BIT_COUNT)
-    {
-        if (programbits & prprogrambits[i].bit)
-            source[enabledbits++] = prprogrambits[i].vert_prog;
-        i++;
-    }
-
-    glShaderSource(vert, enabledbits, source, NULL);
-
-    glCompileShader(vert);
-
-    // --------- FRAGMENT
-    frag = glCreateShader(GL_FRAGMENT_SHADER);
-
-    enabledbits = i = 0;
-    while (i < PR_BIT_COUNT)
-    {
-        if (programbits & prprogrambits[i].bit)
-            source[enabledbits++] = prprogrambits[i].frag_def;
-        i++;
-    }
-    i = 0;
-    while (i < PR_BIT_COUNT)
-    {
-        if (programbits & prprogrambits[i].bit)
-            source[enabledbits++] = prprogrambits[i].frag_prog;
-        i++;
-    }
-
-    glShaderSource(frag, enabledbits, (const GLchar**)source, NULL);
-
-    glCompileShader(frag);
-
-    // --------- PROGRAM
-    program = glCreateProgram();
-
-    glAttachShader(program, vert);
-    glAttachShader(program, frag);
-
-    glLinkProgram(program);
-
-    glGetProgramiv(program, GL_LINK_STATUS, &linkstatus);
-
-    glGetProgramInfoLog(program, PR_INFO_LOG_BUFFER_SIZE, NULL, infobuffer);
-
-    prprograms[programbits].handle = program;
-
-#ifdef DEBUGGINGAIDS
-    if (pr_verbosity >= 1)
-#else
-    if (pr_verbosity >= 2)
-#endif
-        OSD_Printf("PR : Compiling GPU program with bits (octal) %o...\n", (unsigned)programbits);
-    if (!linkstatus) {
-        OSD_Printf("PR : Failed to compile GPU program with bits (octal) %o!\n", (unsigned)programbits);
-        if (pr_verbosity >= 1) OSD_Printf("PR : Compilation log:\n%s\n", infobuffer);
-        glGetShaderSource(vert, PR_INFO_LOG_BUFFER_SIZE, NULL, infobuffer);
-        if (pr_verbosity >= 1) OSD_Printf("PR : Vertex source dump:\n%s\n", infobuffer);
-        glGetShaderSource(frag, PR_INFO_LOG_BUFFER_SIZE, NULL, infobuffer);
-        if (pr_verbosity >= 1) OSD_Printf("PR : Fragment source dump:\n%s\n", infobuffer);
-    }
-
-    // --------- ATTRIBUTE/UNIFORM LOCATIONS
-
-    // PR_BIT_ANIM_INTERPOLATION
-    if (programbits & prprogrambits[PR_BIT_ANIM_INTERPOLATION].bit)
-    {
-        prprograms[programbits].attrib_nextFrameData = glGetAttribLocation(program, "nextFrameData");
-        prprograms[programbits].attrib_nextFrameNormal = glGetAttribLocation(program, "nextFrameNormal");
-        prprograms[programbits].uniform_frameProgress = glGetUniformLocation(program, "frameProgress");
-    }
-
-    // PR_BIT_NORMAL_MAP
-    if (programbits & prprogrambits[PR_BIT_NORMAL_MAP].bit)
-    {
-        prprograms[programbits].attrib_T = glGetAttribLocation(program, "T");
-        prprograms[programbits].attrib_B = glGetAttribLocation(program, "B");
-        prprograms[programbits].attrib_N = glGetAttribLocation(program, "N");
-        prprograms[programbits].uniform_eyePosition = glGetUniformLocation(program, "eyePosition");
-        prprograms[programbits].uniform_normalMap = glGetUniformLocation(program, "normalMap");
-        prprograms[programbits].uniform_normalBias = glGetUniformLocation(program, "normalBias");
-    }
-
-    // PR_BIT_ART_MAP
-    if (programbits & prprogrambits[PR_BIT_ART_MAP].bit)
-    {
-        prprograms[programbits].uniform_artMap = glGetUniformLocation(program, "artMap");
-        prprograms[programbits].uniform_basePalMap = glGetUniformLocation(program, "basePalMap");
-        prprograms[programbits].uniform_lookupMap = glGetUniformLocation(program, "lookupMap");
-        prprograms[programbits].uniform_shadeOffset = glGetUniformLocation(program, "shadeOffset");
-        prprograms[programbits].uniform_visibility = glGetUniformLocation(program, "visibility");
-    }
-
-    // PR_BIT_DIFFUSE_MAP
-    if (programbits & prprogrambits[PR_BIT_DIFFUSE_MAP].bit)
-    {
-        prprograms[programbits].uniform_diffuseMap = glGetUniformLocation(program, "diffuseMap");
-        prprograms[programbits].uniform_diffuseScale = glGetUniformLocation(program, "diffuseScale");
-    }
-
-    // PR_BIT_HIGHPALOOKUP_MAP
-    if (programbits & prprogrambits[PR_BIT_HIGHPALOOKUP_MAP].bit)
-    {
-        prprograms[programbits].uniform_highPalookupMap = glGetUniformLocation(program, "highPalookupMap");
-    }
-
-    // PR_BIT_DIFFUSE_DETAIL_MAP
-    if (programbits & prprogrambits[PR_BIT_DIFFUSE_DETAIL_MAP].bit)
-    {
-        prprograms[programbits].uniform_detailMap = glGetUniformLocation(program, "detailMap");
-        prprograms[programbits].uniform_detailScale = glGetUniformLocation(program, "detailScale");
-    }
-
-    // PR_BIT_SPECULAR_MAP
-    if (programbits & prprogrambits[PR_BIT_SPECULAR_MAP].bit)
-    {
-        prprograms[programbits].uniform_specMap = glGetUniformLocation(program, "specMap");
-    }
-
-    // PR_BIT_SPECULAR_MATERIAL
-    if (programbits & prprogrambits[PR_BIT_SPECULAR_MATERIAL].bit)
-    {
-        prprograms[programbits].uniform_specMaterial = glGetUniformLocation(program, "specMaterial");
-    }
-
-    // PR_BIT_MIRROR_MAP
-    if (programbits & prprogrambits[PR_BIT_MIRROR_MAP].bit)
-    {
-        prprograms[programbits].uniform_mirrorMap = glGetUniformLocation(program, "mirrorMap");
-    }
-#ifdef PR_LINEAR_FOG
-    if (programbits & prprogrambits[PR_BIT_FOG].bit)
-    {
-        prprograms[programbits].uniform_linearFog = glGetUniformLocation(program, "linearFog");
-    }
-#endif
-    // PR_BIT_GLOW_MAP
-    if (programbits & prprogrambits[PR_BIT_GLOW_MAP].bit)
-    {
-        prprograms[programbits].uniform_glowMap = glGetUniformLocation(program, "glowMap");
-    }
-
-    // PR_BIT_PROJECTION_MAP
-    if (programbits & prprogrambits[PR_BIT_PROJECTION_MAP].bit)
-    {
-        prprograms[programbits].uniform_shadowProjMatrix = glGetUniformLocation(program, "shadowProjMatrix");
-    }
-
-    // PR_BIT_SHADOW_MAP
-    if (programbits & prprogrambits[PR_BIT_SHADOW_MAP].bit)
-    {
-        prprograms[programbits].uniform_shadowMap = glGetUniformLocation(program, "shadowMap");
-    }
-
-    // PR_BIT_LIGHT_MAP
-    if (programbits & prprogrambits[PR_BIT_LIGHT_MAP].bit)
-    {
-        prprograms[programbits].uniform_lightMap = glGetUniformLocation(program, "lightMap");
-    }
-
-    // PR_BIT_SPOT_LIGHT
-    if (programbits & prprogrambits[PR_BIT_SPOT_LIGHT].bit)
-    {
-        prprograms[programbits].uniform_spotDir = glGetUniformLocation(program, "spotDir");
-        prprograms[programbits].uniform_spotRadius = glGetUniformLocation(program, "spotRadius");
-    }
 }
 
 // LIGHTS

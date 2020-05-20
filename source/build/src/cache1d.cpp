@@ -69,6 +69,30 @@ void cache1d::reset(void)
     m_numBlocks = 1;
 }
 
+// jmarshall
+int32_t kpzbufload2(char const* const filnam, char** buffer)
+{
+	char* kpzbuf2 = nullptr;
+
+	*buffer = nullptr;
+
+	int32_t const handle = kopen4load(filnam, 0);
+	if (handle < 0)
+		return 0;
+
+	int32_t const leng = kfilelength(handle);
+	kpzbuf2 = (char*)malloc(leng + 1);
+	kpzbuf2[leng] = 0;  // FIXME: buf[leng] read in kpegrend(), see BUF_LENG_READ
+	kread(handle, kpzbuf2, leng);
+
+	*buffer = kpzbuf2;
+
+	kclose(handle);
+
+	return leng;
+}
+// jmarshall end
+
 void cache1d::initBuffer(intptr_t dacachestart, uint32_t dacachesize, uint32_t minsize /*= 0*/)
 {
     if (!g_cacheInit)

@@ -30,6 +30,8 @@ enum cachelock_t : char
     CACHE1D_PERMANENT = 255,
 };
 
+int32_t kpzbufload2(char const* const filnam, char** buffer);
+
 class cache1d
 {
 public:

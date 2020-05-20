@@ -6599,11 +6599,17 @@ static void renderDrawSprite(int32_t snum)
         return;
 # ifdef POLYMER
     case REND_POLYMER:
-        glEnable(GL_ALPHA_TEST);
-        glEnable(GL_BLEND);
+        if (rhiType == RHI_OPENGL)
+        {
+            glEnable(GL_ALPHA_TEST);
+            glEnable(GL_BLEND);
+        }
         polymer_drawsprite(snum);
-        glDisable(GL_BLEND);
-        glDisable(GL_ALPHA_TEST);
+        if (rhiType == RHI_OPENGL)
+        {
+            glDisable(GL_BLEND);
+            glDisable(GL_ALPHA_TEST);
+        }
         return;
 # endif
 #endif
@@ -6622,13 +6628,19 @@ static void renderDrawMaskedWall(int16_t damaskwallcnt)
 # ifdef POLYMER
     else if (videoGetRenderMode() == REND_POLYMER)
     {
-        glEnable(GL_ALPHA_TEST);
-        glEnable(GL_BLEND);
+        if (rhiType == RHI_OPENGL)
+        {
+            glEnable(GL_ALPHA_TEST);
+            glEnable(GL_BLEND);
+        }
 
         polymer_drawmaskwall(damaskwallcnt);
 
-        glDisable(GL_BLEND);
-        glDisable(GL_ALPHA_TEST);
+        if (rhiType == RHI_OPENGL)
+        {
+            glDisable(GL_BLEND);
+            glDisable(GL_ALPHA_TEST);
+        }
 
         return;
     }
@@ -8924,7 +8936,10 @@ int32_t renderDrawRoomsQ16(int32_t daposx, int32_t daposy, int32_t daposz,
 #  endif
         polymer_glinit();
         polymer_drawrooms(daposx, daposy, daposz, daang, dahoriz, dacursectnum);
-        glDisable(GL_CULL_FACE);
+        if (rhiType == RHI_OPENGL)
+        {
+            glDisable(GL_CULL_FACE);
+        }
         polymost2d = 0;
         return 0;
     }
@@ -12604,11 +12619,14 @@ void videoClearViewableArea(int32_t dacol)
     {
         palette_t const p = paletteGetColor(dacol);
 
-        glClearColor((float)p.r * (1.f/255.f),
-                      (float)p.g * (1.f/255.f),
-                      (float)p.b * (1.f/255.f),
-                      0);
-        glClear(GL_COLOR_BUFFER_BIT);
+        if (rhiType == RHI_OPENGL)
+        {
+            glClearColor((float)p.r * (1.f / 255.f),
+                (float)p.g * (1.f / 255.f),
+                (float)p.b * (1.f / 255.f),
+                0);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
         return;
     }
 #endif
@@ -12642,12 +12660,15 @@ void videoClearScreen(int32_t dacol)
     {
         palette_t const p = paletteGetColor(dacol);
 
-        glViewport(0,0,xdim,ydim);
-        glClearColor((float)p.r * (1.f/255.f),
-                      (float)p.g * (1.f/255.f),
-                      (float)p.b * (1.f/255.f),
-                      0);
-        glClear(GL_COLOR_BUFFER_BIT);
+        if (rhiType == RHI_OPENGL)
+        {
+            glViewport(0, 0, xdim, ydim);
+            glClearColor((float)p.r * (1.f / 255.f),
+                (float)p.g * (1.f / 255.f),
+                (float)p.b * (1.f / 255.f),
+                0);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
         return;
     }
 #endif

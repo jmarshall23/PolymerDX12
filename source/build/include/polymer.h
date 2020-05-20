@@ -14,11 +14,33 @@
 # include "polymost.h"
 # include "pragmas.h"
 
+#define POLYMER_DX12_MAXPOLYVERTS            60000
+#define POLYMER_DX12_MAXLEVELVERTS           150000
+#define POLYMER_DX12_MAXVERTS                POLYMER_DX12_MAXLEVELVERTS + POLYMER_DX12_MAXPOLYVERTS
+#define POLYMER_DX12_MAXINDEXES              POLYMER_DX12_MAXVERTS * 3
+
+struct Vertex {
+	float position[3];
+	float st[2];
+	float TileRect[4];
+	float info[3];
+};
+
+extern Vertex board_vertexes[POLYMER_DX12_MAXVERTS];
+extern int numBoardVertexes;
+extern int numGuiVertexes;
+
+extern int board_indexes[POLYMER_DX12_MAXINDEXES];
+extern int numBoardIndexes;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #define PR_LINEAR_FOG
+
+void polymer_ogl_loadinteraction(void);
+void  polymer_ogl_compileprogram(int32_t programbits);
 
 // CVARS
 extern int32_t      pr_lighting;
@@ -89,6 +111,7 @@ typedef enum {
 }                   prbittype;
 
 typedef struct      s_prmaterial {
+    GLuint          tilenum;
     // PR_BIT_ANIM_INTERPOLATION
     GLfloat         frameprogress;
     GLfloat*        nextframedata;
@@ -103,6 +126,7 @@ typedef struct      s_prmaterial {
     GLint           shadeoffset;
     GLfloat         visibility;
     // PR_BIT_DIFFUSE_MAP
+    tr_texture*     d3ddiffusemap;
     GLuint          diffusemap;
     GLfloat         diffusescale[2];
     // PR_BIT_HIGHPALOOKUP_MAP
@@ -185,11 +209,100 @@ typedef struct      s_prrograminfo {
 
 typedef struct      s_prprogrambit {
     int32_t         bit;
-    const char*           vert_def;
-    const char*           vert_prog;
-    const char*           frag_def;
-    const char*           frag_prog;
+    const char* programMacros;
 }                   _prprogrambit;
+
+
+// MATERIALS
+static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
+	{
+		1 << PR_BIT_HEADER,
+		// vert_def
+	},
+	{
+		1 << PR_BIT_ANIM_INTERPOLATION,
+		"#define ANIM_INTERPOLATION\n",
+	},
+	{
+		1 << PR_BIT_LIGHTING_PASS,
+		"#define LIGHTING_PASS\n"
+	},
+	{
+		1 << PR_BIT_NORMAL_MAP,
+		"#define NORMAL_MAP\n"
+	},
+	{
+		1 << PR_BIT_ART_MAP,
+		"#define ART_MAP\n"
+	},
+	{
+		1 << PR_BIT_DIFFUSE_MAP,
+		"#define DIFFUSE_MAP\n"
+	},
+	{
+		1 << PR_BIT_DIFFUSE_DETAIL_MAP,
+		"#define DIFFUSE_DETAIL_MAP\n"
+	},
+	{
+		1 << PR_BIT_DIFFUSE_MODULATION,
+		"#define DIFFUSE_MODULATION\n"
+	},
+	{
+		1 << PR_BIT_DIFFUSE_MAP2,
+		"#define DIFFUSE_MAP2\n"
+	},
+	{
+		1 << PR_BIT_HIGHPALOOKUP_MAP,
+		"#define HIGHPALOOKUP_MAP\n"
+	},
+	{
+		1 << PR_BIT_SPECULAR_MAP,
+		"#define SPECULAR_MAP\n"
+	},
+	{
+		1 << PR_BIT_SPECULAR_MATERIAL,
+		"#define SPECULAR_MATERIAL\n"
+	},
+	{
+		1 << PR_BIT_MIRROR_MAP,
+		"#define MIRROR_MAP\n"
+	},
+	{
+		1 << PR_BIT_FOG,
+		"#define FOG\n"
+#ifdef PR_LINEAR_FOG
+		"#define LINEAR_FOG\n"
+#endif
+	},
+	{
+		1 << PR_BIT_GLOW_MAP,
+		"#define GLOW_MAP\n"
+	},
+	{
+		1 << PR_BIT_PROJECTION_MAP,
+		"#define PROJECTION_MAP\n"
+	},
+	{
+		1 << PR_BIT_SHADOW_MAP,
+		"#define SHADOW_MAP\n"
+	},
+	{
+		1 << PR_BIT_LIGHT_MAP,
+		"#define LIGHT_MAP\n"
+	},
+	{
+		1 << PR_BIT_SPOT_LIGHT,
+		"#define SPOT_LIGHT\n"
+	},
+	{
+		1 << PR_BIT_POINT_LIGHT,
+		"#define POINT_LIGHT\n"
+	},
+	{
+		1 << PR_BIT_FOOTER,
+		""
+	}
+};
 
 typedef struct      s_prbucket {
     // index
@@ -234,6 +347,10 @@ typedef struct      s_prvert {
 }                   _prvert;
 
 typedef struct      s_prplane {
+	int32_t         vertoffset;
+	int32_t         indexoffset;
+	int32_t         numindexes;
+
     // geometry
     _prvert*        buffer;
     int32_t         vertcount;
@@ -431,7 +548,7 @@ static void         polymer_getsky(void);
 static void         polymer_drawsky(int16_t tilenum, char palnum, int8_t shade);
 static void         polymer_initartsky(void);
 static void         polymer_drawartsky(int16_t tilenum, char palnum, int8_t shade);
-static void         polymer_drawartskyquad(int32_t p1, int32_t p2, GLfloat height);
+static void         polymer_drawartskyquad(int32_t picnum, int32_t p1, int32_t p2, GLfloat height);
 static void         polymer_drawskybox(int16_t tilenum, char palnum, int8_t shade);
 // MDSPRITES
 static void         polymer_drawmdsprite(tspriteptr_t tspr);

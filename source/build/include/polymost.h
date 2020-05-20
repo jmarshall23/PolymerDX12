@@ -23,6 +23,8 @@ extern float gcosang, gsinang, gcosang2, gsinang2;
 extern float gchang, gshang, gctang, gstang, gvisibility;
 extern float gvrcorrection;
 
+struct tr_texture* GetTileSheet(int index);
+
 struct glfiltermodes {
     const char *name;
     int32_t min,mag;
@@ -70,6 +72,7 @@ void polymost_activeTexture(GLenum texture);
 void polymost_bindTexture(GLenum target, uint32_t textureID);
 void polymost_updatePalette(void);
 void polymost_useShaderProgram(uint32_t shaderID);
+void polymost_gettileinfo(int picnum, float& x, float& y, float& width, float& height);
 
 float* multiplyMatrix4f(float m0[4*4], const float m1[4*4]);
 
@@ -272,6 +275,8 @@ typedef struct pthtyp_t
     struct pthtyp_t *next;
     struct pthtyp_t *ofb; // fullbright pixels
     hicreplctyp     *hicr;
+
+    struct tr_texture* d3dpic;
 
     uint32_t        glpic;
     vec2f_t         scale;
