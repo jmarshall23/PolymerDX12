@@ -1897,9 +1897,42 @@ void videoEndDrawing(void)
 extern "C" void AndroidDrawControls();
 #endif
 
+void TempDrawFPSHack(void) {
+	static int32_t frameCount;
+	static double cumulativeFrameDelay;
+	static double lastFrameTime;
+	static float lastFPS, minFPS = FLT_MAX, maxFPS;
+	static double minGameUpdate = DBL_MAX, maxGameUpdate;
+
+	double frameTime = timerGetHiTicks();
+	double frameDelay = frameTime - lastFrameTime;
+	cumulativeFrameDelay += frameDelay;
+
+    char tempbuf[2048];
+#ifdef _DEBUG
+	Bsprintf(tempbuf, "Eduke32 (Vulkan-DEBUG): %.1f ms, %5.1f fps", frameDelay, lastFPS);
+#else
+    Bsprintf(tempbuf, "Eduke32 (Vulkan-RELEASE): %.1f ms, %5.1f fps", frameDelay, lastFPS);
+#endif
+	wm_setapptitle(tempbuf);
+
+
+	if (cumulativeFrameDelay >= 1000.0)
+	{
+		lastFPS = 1000.f * frameCount / cumulativeFrameDelay;
+		frameCount = 0;
+		cumulativeFrameDelay = 0.0;
+	}
+	frameCount++;
+
+    lastFrameTime = frameTime;
+}
+
 void videoShowFrame(int32_t w)
 {
     UNREFERENCED_PARAMETER(w);
+
+    TempDrawFPSHack();
 
 #ifdef __ANDROID__
     if (mobile_halted) return;
