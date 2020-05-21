@@ -9,8 +9,10 @@
 extern tr_cmd* graphicscmd;
 
 tr_buffer* prd3d12_vertex_buffer;
-tr_buffer* prd3d12_index_buffer;
+tr_buffer* prd3d12_index_buffer[3];
 tr_buffer* prd3d12_null_index_buffer;
+
+extern uint32_t frameIdx;
 
 tr_sampler* m_linear_sampler;
 extern tr_renderer* m_renderer;
@@ -62,11 +64,12 @@ void GL_Init(void) {
 
 	uint64_t vertexDataSize = sizeof(Vertex) * POLYMER_DX12_MAXVERTS;
 	uint32_t vertexStride = sizeof(Vertex);
+	uint64_t indexDataSize = sizeof(uint32_t) * POLYMER_DX12_MAXINDEXES;
 
 	tr_create_vertex_buffer(m_renderer, vertexDataSize, true, vertexStride, &prd3d12_vertex_buffer);
-
-	uint64_t indexDataSize = sizeof(uint32_t) * POLYMER_DX12_MAXINDEXES;
-	tr_create_index_buffer(m_renderer, indexDataSize, true, tr_index_type_uint32, &prd3d12_index_buffer);
+	for (int i = 0; i < 3; i++) {		
+		tr_create_index_buffer(m_renderer, indexDataSize, true, tr_index_type_uint32, &prd3d12_index_buffer[i]);
+	}
 
 	tr_create_index_buffer(m_renderer, 6 * sizeof(uint32_t), true, tr_index_type_uint32, &prd3d12_null_index_buffer);
 	memset(((unsigned char*)prd3d12_null_index_buffer->cpu_mapped_address), 0, sizeof(uint32_t) * 6);
@@ -152,9 +155,7 @@ void GL_DrawBuffer(int picnum, float * drawpolyVerts, int numPoints) {
 	GL_MultiplyMatrix(modelview_matrix, projection_matrix, uniformBuffer.mvp);
 	//memcpy(uniformBuffer.worldbuffer, modelview_matrix, sizeof(float) * 16);
 
-	GL_BindDescSetForDrawCall(uniformBuffer, false);
-
-	tr_cmd_bind_vertex_buffers(graphicscmd, 1, &prd3d12_vertex_buffer);
+	GL_BindDescSetForDrawCall(uniformBuffer, false);	
 
 	tr_cmd_draw(graphicscmd, numPoints, startVertex);
 	numFrameDrawCalls++;
@@ -166,9 +167,8 @@ void GL_DrawBuffer(int startIndex, int numIndexes) {
 	GL_MultiplyMatrix(modelview_matrix, projection_matrix, uniformBuffer.mvp);
 	//memcpy(uniformBuffer.worldbuffer, modelview_matrix, sizeof(float) * 16);
 	GL_BindDescSetForDrawCall(uniformBuffer, true);
-
-	tr_cmd_bind_vertex_buffers(graphicscmd, 1, &prd3d12_vertex_buffer);
-	tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer);
+	
+	tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx]);
 
 	tr_cmd_draw_indexed(graphicscmd, numIndexes, startIndex);
 

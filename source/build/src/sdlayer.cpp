@@ -44,6 +44,8 @@
 
 #include "buildrender.h"
 #include <vector>
+#include <mutex>
+#include <thread>
 
 tr_renderer* m_renderer = nullptr;
 tr_cmd_pool* m_cmd_pool = nullptr;
@@ -62,6 +64,7 @@ uint32_t swapchain_image_index = -1;
 tr_render_target* render_target = NULL;
 
 tr_cmd* graphicscmd = NULL;
+SDL_mutex   *d3d_fence_mutex;
 
 #if SDL_MAJOR_VERSION >= 2
 static SDL_version linked;
@@ -695,6 +698,10 @@ int32_t sdlayer_checkversion(void)
 int32_t initsystem(void)
 {
     mutex_init(&m_initprintf);
+// jmarshall
+    //mutex_init(&d3d_fence_mutex);
+    d3d_fence_mutex = SDL_CreateMutex();
+// jmarshall end
 
 #ifdef _WIN32
     windowsPlatformInit();
@@ -1928,18 +1935,39 @@ void TempDrawFPSHack(void) {
     lastFrameTime = frameTime;
 }
 
+std::thread* d3d12FenceThread = NULL;
+bool d3d_fence_haswork = false;
+void D3D12_FenceThread() {
+    while (true)
+    {
+        if (!d3d_fence_haswork) {
+            Sleep(1);
+            continue;
+        }
+		tr_queue_wait_idle(m_renderer->graphics_queue);
+		d3d_fence_haswork = false;
+    }
+}
+
+extern tr_buffer* prd3d12_vertex_buffer;
 void videoShowFrame(int32_t w)
 {
-    UNREFERENCED_PARAMETER(w);
-
-    TempDrawFPSHack();
+    UNREFERENCED_PARAMETER(w);    
 
 #ifdef __ANDROID__
     if (mobile_halted) return;
 #endif
 
 	if (rhiType == RHI_D3D12) {
-		if (graphicscmd != NULL) {
+		if (graphicscmd != NULL) {	
+			while (d3d_fence_haswork) {
+				Sleep(1);
+			}
+
+			assert(!d3d_fence_haswork);
+
+            TempDrawFPSHack();
+
 			tr_cmd_end_render(graphicscmd);
 			tr_cmd_render_target_transition(graphicscmd, render_target, tr_texture_usage_color_attachment, tr_texture_usage_present);
 			tr_cmd_depth_stencil_transition(graphicscmd, render_target, tr_texture_usage_depth_stencil_attachment, tr_texture_usage_sampled_image);
@@ -1948,7 +1976,9 @@ void videoShowFrame(int32_t w)
 			tr_queue_submit(m_renderer->graphics_queue, 1, &graphicscmd, 1, &image_acquired_semaphore, 1, &render_complete_semaphores);
 			tr_queue_present(m_renderer->present_queue, 1, &render_complete_semaphores);
 
-			tr_queue_wait_idle(m_renderer->graphics_queue);
+			if (d3d12FenceThread == NULL) {
+                d3d12FenceThread = new std::thread(D3D12_FenceThread);
+			}
 
 			image_acquired_fence = NULL;
 			image_acquired_semaphore = NULL;
@@ -1960,10 +1990,12 @@ void videoShowFrame(int32_t w)
 				frameplace = 0;
 
 			GL_EndFrame();
+
+            d3d_fence_haswork = true;
 		}
 
 		{
-			uint32_t frameIdx = s_frame_count % m_renderer->settings.swapchain.image_count;
+			frameIdx = s_frame_count % m_renderer->settings.swapchain.image_count;
 
 			image_acquired_fence = m_renderer->image_acquired_fences[frameIdx];
 			image_acquired_semaphore = m_renderer->image_acquired_semaphores[frameIdx];
@@ -1989,7 +2021,8 @@ void videoShowFrame(int32_t w)
 			tr_clear_value depth_stencil_clear_value = { 0 };
 			depth_stencil_clear_value.depth = 1.0f;
 			depth_stencil_clear_value.stencil = 255;
-			tr_cmd_clear_depth_stencil_attachment(graphicscmd, &depth_stencil_clear_value);
+			tr_cmd_clear_depth_stencil_attachment(graphicscmd, &depth_stencil_clear_value);            
+            tr_cmd_bind_vertex_buffers(graphicscmd, 1, &prd3d12_vertex_buffer);
 		}
 		return;
 	}

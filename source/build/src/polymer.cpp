@@ -83,6 +83,8 @@ extern tr_cmd* graphicscmd;
 float4x4 viewMatrix;
 float4x4 skyMatrix;
 
+extern uint32_t frameIdx;
+
 //Vertex board_vertexes[POLYMER_DX12_MAXVERTS];
 int numBoardVertexes = 0;
 int numGuiVertexes = 0;
@@ -99,7 +101,7 @@ int numSpriteIndxes = 0;
 void polymer_updatesprited3d12(int32_t snum);
 
 extern tr_buffer* prd3d12_vertex_buffer;
-extern tr_buffer* prd3d12_index_buffer;
+extern tr_buffer* prd3d12_index_buffer[3];
 
 const GLsizeiptr proneplanesize = sizeof(_prvert) * 4;
 const GLintptr prwalldatasize = sizeof(_prvert)* 4 * 3; // wall, over and mask planes for every wall
@@ -788,7 +790,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
 
     if (videoGetRenderMode() == REND_CLASSIC) return;
 
-	memset(prd3d12_index_buffer->cpu_mapped_address, 0, sizeof(int) * POLYMER_DX12_MAXINDEXES);
+	memset(prd3d12_index_buffer[frameIdx]->cpu_mapped_address, 0, sizeof(int) * POLYMER_DX12_MAXINDEXES);
 
     videoBeginDrawing();
 
@@ -2130,7 +2132,7 @@ static void         polymer_drawplane(_prplane* plane)
 
 		int startIndex = plane->indexoffset;
 		int numIndexes = plane->numindexes;
-		memcpy(((unsigned char*)prd3d12_index_buffer->cpu_mapped_address) + (startIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
+		memcpy(((unsigned char*)prd3d12_index_buffer[frameIdx]->cpu_mapped_address) + (startIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
 		return;
 	}
 
@@ -4141,7 +4143,7 @@ void polymer_updatesprited3d12(int32_t snum) {
         polymer_endwriteverts(tspr->picnum, startVertex, sprite->plane.vertcount, startIndex, sprite->plane.indicescount, sprite->plane.material.shadeoffset, sprite->plane.material.visibility, tspr->pal);
 	}
 
-	memcpy(((unsigned char*)prd3d12_index_buffer->cpu_mapped_address) + (startIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
+	memcpy(((unsigned char*)prd3d12_index_buffer[frameIdx]->cpu_mapped_address) + (startIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
 
 	//	sprite->plane.visibility = sector[tspr->sectnum].visibility;
 	//	sprite->plane.shadeNum = tspr->shade;

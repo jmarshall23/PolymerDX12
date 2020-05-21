@@ -1046,6 +1046,10 @@ InitGame(int32_t argc, char const * const * argv)
         SW_FatalEngineError();
 
     palettePostLoadLookups();
+    
+// jmarshall
+    videoShowFrame(0);
+// jmarshall end
 
     DemoModeMenuInit = TRUE;
     // precache as much stuff as you can
