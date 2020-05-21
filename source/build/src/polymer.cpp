@@ -2033,6 +2033,12 @@ static hashtable_t h_buckets      = { 2048, NULL };
 
 static _prbucket*   polymer_findbucket(int16_t tilenum, char pal)
 {
+    // We don't use this system in D3D12/Vulkan.
+    if (rhiType == RHI_D3D12) {
+        static _prbucket bucketptr;
+        return &bucketptr;
+    }
+
     char propstr[16];
 
     Bsprintf(propstr, "%d_%d", tilenum, pal);
