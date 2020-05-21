@@ -5384,8 +5384,17 @@ static _prbucket*   polymer_getbuildmaterial(_prmaterial* material, int16_t tile
                 pal = 0;
         }
 
-        if (!prartmaps[tilenum] || !prbasepalmaps[curbasepal] || !prlookups[pal])
-            polymer_setupartmap(tilenum, pal);
+        if (rhiType == RHI_OPENGL)
+        {
+            if (!prartmaps[tilenum] || !prbasepalmaps[curbasepal] || !prlookups[pal])
+                polymer_setupartmap(tilenum, pal);
+        }
+        else
+        {
+            if(!uploadedbasepaltable[pal] && basepaltable[pal]) {
+                polymer_setupartmap(tilenum, pal);
+            }
+        }
 
         material->artmap = prartmaps[tilenum];
         material->basepalmap = prbasepalmaps[curbasepal];
