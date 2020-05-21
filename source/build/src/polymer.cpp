@@ -2112,11 +2112,9 @@ static void         polymer_drawplane(_prplane* plane)
     if (pr_nullrender >= 1) return;
 
 	if (rhiType == RHI_D3D12) {
-		//materialbits = polymer_bindmaterial(&plane->material, plane->lights, plane->lightcount);
-		//
-		//GL_DrawBuffer(plane->indexoffset, plane->numindexes);
-		//
-		//polymer_unbindmaterial(materialbits);
+        if (tilesiz[plane->material.tilenum].x <= 0 || tilesiz[plane->material.tilenum].y <= 0) {
+            return;
+        }
 
 		int startIndex = plane->indexoffset;
 		int numIndexes = plane->numindexes;
@@ -2908,6 +2906,35 @@ static void         polymer_drawsector(int16_t sectnum, int32_t domasks)
 
     sec = (usectorptr_t)&sector[sectnum];
     s = prsectors[sectnum];
+
+// jmarshall - support changing sky picnum
+	if (sector[sectnum].ceilingstat & 1)
+	{
+		int32_t horizfrac;
+
+		cursky = sector[sectnum].ceilingpicnum;
+		curskypal = sector[sectnum].ceilingpal;
+		curskyshade = sector[sectnum].ceilingshade;
+
+		getpsky(cursky, &horizfrac, NULL, NULL, NULL);
+
+		switch (horizfrac)
+		{
+		case 0:
+			// psky always at same level wrt screen
+			curskyangmul = 0.f;
+			break;
+		case 65536:
+			// psky horiz follows camera horiz
+			curskyangmul = 1.f;
+			break;
+		default:
+			// sky has hard-coded parallax
+			curskyangmul = 1 / DEFAULT_ARTSKY_ANGDIV;
+			break;
+		}
+	}
+// jmarshall end
 
     queuedmask = FALSE;
 
@@ -4396,41 +4423,41 @@ void                polymer_updatesprite(int32_t snum)
 // SKIES
 static void         polymer_getsky(void)
 {
-    int32_t         i;
-
-    i = 0;
-    while (i < numsectors)
-    {
-        if (sector[i].ceilingstat & 1)
-        {
-            int32_t horizfrac;
-
-            cursky = sector[i].ceilingpicnum;
-            curskypal = sector[i].ceilingpal;
-            curskyshade = sector[i].ceilingshade;
-
-            getpsky(cursky, &horizfrac, NULL, NULL, NULL);
-
-            switch (horizfrac)
-            {
-            case 0:
-                // psky always at same level wrt screen
-                curskyangmul = 0.f;
-                break;
-            case 65536:
-                // psky horiz follows camera horiz
-                curskyangmul = 1.f;
-                break;
-            default:
-                // sky has hard-coded parallax
-                curskyangmul = 1/DEFAULT_ARTSKY_ANGDIV;
-                break;
-            }
-
-            return;
-        }
-        i++;
-    }
+    //int32_t         i;
+    //
+    //i = 0;
+    //while (i < numsectors)
+    //{
+    //    if (sector[i].ceilingstat & 1)
+    //    {
+    //        int32_t horizfrac;
+    //
+    //        cursky = sector[i].ceilingpicnum;
+    //        curskypal = sector[i].ceilingpal;
+    //        curskyshade = sector[i].ceilingshade;
+    //
+    //        getpsky(cursky, &horizfrac, NULL, NULL, NULL);
+    //
+    //        switch (horizfrac)
+    //        {
+    //        case 0:
+    //            // psky always at same level wrt screen
+    //            curskyangmul = 0.f;
+    //            break;
+    //        case 65536:
+    //            // psky horiz follows camera horiz
+    //            curskyangmul = 1.f;
+    //            break;
+    //        default:
+    //            // sky has hard-coded parallax
+    //            curskyangmul = 1/DEFAULT_ARTSKY_ANGDIV;
+    //            break;
+    //        }
+    //
+    //        return;
+    //    }
+    //    i++;
+    //}
 }
 
 void         polymer_drawsky(int16_t tilenum, char palnum, int8_t shade)
@@ -4484,80 +4511,78 @@ void         polymer_drawsky(int16_t tilenum, char palnum, int8_t shade)
 
 static void         polymer_initartsky(void)
 {
-    constexpr double factor = 2.0 * PI / (double)PSKYOFF_MAX;
+	GLfloat         halfsqrt2 = 0.70710678f;
 
-    for (int i = 0; i < PSKYOFF_MAX; i++)
-    {
-        artskydata[i * 2 + 0] = -cos(i * factor);
-        artskydata[i * 2 + 1] = sin(i * factor);
-    }
+	artskydata[0] = -1.0f;          artskydata[1] = 0.0f;           // 0
+	artskydata[2] = -halfsqrt2;     artskydata[3] = halfsqrt2;      // 1
+	artskydata[4] = 0.0f;           artskydata[5] = 1.0f;           // 2
+	artskydata[6] = halfsqrt2;      artskydata[7] = halfsqrt2;      // 3
+	artskydata[8] = 1.0f;           artskydata[9] = 0.0f;           // 4
+	artskydata[10] = halfsqrt2;     artskydata[11] = -halfsqrt2;    // 5
+	artskydata[12] = 0.0f;          artskydata[13] = -1.0f;         // 6
+	artskydata[14] = -halfsqrt2;    artskydata[15] = -halfsqrt2;    // 7
 }
 
 static void         polymer_drawartsky(int16_t tilenum, char palnum, int8_t shade)
 {
-    pthtyp*         pth;
-    GLuint          glpics[PSKYOFF_MAX];
-    GLfloat         glcolors[PSKYOFF_MAX][3];
-    int32_t         i, j;
-    GLfloat         height = 2.45f / 2.0f;
+	pthtyp* pth;
+	GLuint          glpics[PSKYOFF_MAX + 1];
+	GLfloat         glcolors[PSKYOFF_MAX + 1][3];
+	int32_t         i, j;
+	GLfloat         height = 2.45f / 2.0f;
 
-    int32_t dapskybits;
-    const int8_t *dapskyoff = getpsky(tilenum, NULL, &dapskybits, NULL, NULL);
-    const int32_t numskytiles = 1<<dapskybits;
-    const int32_t numskytilesm1 = numskytiles-1;
+	int32_t dapskybits;
+	const int8_t* dapskyoff = getpsky(tilenum, NULL, &dapskybits, NULL, NULL);
+	const int32_t numskytilesm1 = (1 << dapskybits) - 1;
 
-    i = 0;
-    while (i < numskytiles)
-    {
-        int16_t picnum = tilenum + dapskyoff[i];
-        // Prevent oob by bad user input:
-        if (picnum >= MAXTILES)
-            picnum = MAXTILES-1;
+	i = 0;
+	while (i <= PSKYOFF_MAX)
+	{
+		int16_t picnum = tilenum + i;
+		// Prevent oob by bad user input:
+		if (picnum >= MAXTILES)
+			picnum = MAXTILES - 1;
 
-        tileUpdatePicnum(&picnum, 0);
-        if (!waloff[picnum])
-            tileLoad(picnum);
-        pth = texcache_fetch(picnum, palnum, 0, DAMETH_NOMASK);
-        glpics[i] = pth ? pth->glpic : 0;
+		//DO_TILE_ANIM(picnum, 0);
+		if (!waloff[picnum])
+			tileLoad(picnum);
+		pth = texcache_fetch(picnum, palnum, 0, DAMETH_NOMASK);
+		glpics[i] = pth ? pth->glpic : 0;
 
-        glcolors[i][0] = glcolors[i][1] = glcolors[i][2] = getshadefactor(shade);
+		glcolors[i][0] = glcolors[i][1] = glcolors[i][2] = getshadefactor(shade);
 
-        if (pth)
-        {
-            // tinting
-            polytintflags_t const tintflags = hictinting[palnum].f;
-            if (!(tintflags & HICTINT_PRECOMPUTED))
-            {
-                if (pth->flags & PTH_HIGHTILE)
-                {
-                    if (pth->palnum != palnum || (pth->effects & HICTINT_IN_MEMORY) || (tintflags & HICTINT_APPLYOVERALTPAL))
-                        hictinting_apply(glcolors[i], palnum);
-                }
-                else if (tintflags & (HICTINT_USEONART|HICTINT_ALWAYSUSEART))
-                    hictinting_apply(glcolors[i], palnum);
-            }
+		if (pth)
+		{
+			// tinting
+			polytintflags_t const tintflags = hictinting[palnum].f;
+			if (!(tintflags & HICTINT_PRECOMPUTED))
+			{
+				if (pth->flags & PTH_HIGHTILE)
+				{
+					if (pth->palnum != palnum || (pth->effects & HICTINT_IN_MEMORY) || (tintflags & HICTINT_APPLYOVERALTPAL))
+						hictinting_apply(glcolors[i], palnum);
+				}
+				else if (tintflags & (HICTINT_USEONART | HICTINT_ALWAYSUSEART))
+					hictinting_apply(glcolors[i], palnum);
+			}
 
-            // global tinting
-            if ((pth->flags & PTH_HIGHTILE) && have_basepal_tint())
-                hictinting_apply(glcolors[i], MAXPALOOKUPS-1);
+			// global tinting
+			if ((pth->flags & PTH_HIGHTILE) && have_basepal_tint())
+				hictinting_apply(glcolors[i], MAXPALOOKUPS - 1);
 
-            globaltinting_apply(glcolors[i]);
-        }
+			globaltinting_apply(glcolors[i]);
+		}
 
-        i++;
-    }
+		i++;
+	}
 
-    if (rhiType == RHI_OPENGL) {
-        glEnable(GL_TEXTURE_2D);
-    }
-    i = 0;
-    j = 0;
-    int32_t const increment = PSKYOFF_MAX>>max(3, dapskybits);  // In Polymer, an ART sky has 8 or 16 sides...
-    while (i < PSKYOFF_MAX)
-    {
-        GLint oldswrap;
-        // ... but in case a multi-psky specifies less than 8, repeat cyclically:
-        const int8_t tileofs = j&numskytilesm1;
+	i = 0;
+	j = 8;  // In Polymer, an ART sky has always 8 sides...
+	while (i < j)
+	{
+		GLint oldswrap;
+		// ... but in case a multi-psky specifies less than 8, repeat cyclically:
+		const int8_t tileofs = dapskyoff[i & numskytilesm1];
 
 		if (rhiType == RHI_OPENGL)
 		{
@@ -4575,13 +4600,8 @@ static void         polymer_drawartsky(int16_t tilenum, char palnum, int8_t shad
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, oldswrap);
 		}
 
-        i += increment;
-        ++j;
-    }
-    if (rhiType == RHI_OPENGL)
-    {
-        glDisable(GL_TEXTURE_2D);
-    }
+		i++;
+	}
 }
 
 static void         polymer_drawartskyquad(int32_t picnum, int32_t p1, int32_t p2, GLfloat height)
