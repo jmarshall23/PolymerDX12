@@ -83,7 +83,7 @@ extern tr_cmd* graphicscmd;
 float4x4 viewMatrix;
 float4x4 skyMatrix;
 
-Vertex board_vertexes[POLYMER_DX12_MAXVERTS];
+//Vertex board_vertexes[POLYMER_DX12_MAXVERTS];
 int numBoardVertexes = 0;
 int numGuiVertexes = 0;
 
@@ -615,24 +615,30 @@ void                polymer_glinit(void)
     glEnable(GL_CULL_FACE);
 }
 
-void polymer_uploadverts(int picnum, int startVertex, int numPoints, int startIndex, int numIndexes, float shade, float visibility, float palette) {
+Vertex *polymer_beginwriteverts(int startVertex) {
+    return (Vertex*)(((unsigned char*)prd3d12_vertex_buffer->cpu_mapped_address) + (startVertex * sizeof(Vertex)));
+}
+
+void polymer_endwriteverts(int picnum, int startVertex, int numPoints, int startIndex, int numIndexes, float shade, float visibility, float palette) {
 	float TileRectInfo[4];
 	polymost_gettileinfo(picnum, TileRectInfo[0], TileRectInfo[1], TileRectInfo[2], TileRectInfo[3]);
 
 	assert(palette < 60);
 	assert(curbasepal < 60);
 
-	for (int i = startVertex; i < startVertex + numPoints; i++) {
-		board_vertexes[i].TileRect[0] = TileRectInfo[0];
-		board_vertexes[i].TileRect[1] = TileRectInfo[1];
-		board_vertexes[i].TileRect[2] = TileRectInfo[2];
-		board_vertexes[i].TileRect[3] = TileRectInfo[3];
-		board_vertexes[i].info[0] = shade;
-		board_vertexes[i].info[1] = visibility;
-		board_vertexes[i].info[2] = packint(palette, curbasepal, 0, 0);
+    Vertex* vertex = polymer_beginwriteverts(startVertex);
+
+	for (int i = startVertex; i < startVertex + numPoints; i++, vertex++) {
+        vertex->TileRect[0] = TileRectInfo[0];
+        vertex->TileRect[1] = TileRectInfo[1];
+        vertex->TileRect[2] = TileRectInfo[2];
+        vertex->TileRect[3] = TileRectInfo[3];
+        vertex->info[0] = shade;
+        vertex->info[1] = visibility;
+        vertex->info[2] = packint(palette, curbasepal, 0, 0);
 	}
 
-	memcpy(((unsigned char*)prd3d12_vertex_buffer->cpu_mapped_address) + (startVertex * sizeof(Vertex)), &board_vertexes[startVertex], numPoints * sizeof(Vertex));
+	//memcpy(((unsigned char*)prd3d12_vertex_buffer->cpu_mapped_address) + (startVertex * sizeof(Vertex)), &board_vertexes[startVertex], numPoints * sizeof(Vertex));
 }
 
 void                polymer_resetlights(void)
@@ -2721,18 +2727,15 @@ finish:
 					}
 
 					{
-						for (int i = 0; i < sec->wallnum; i++)
+                        Vertex* v = polymer_beginwriteverts(s->floor.vertoffset);
+						for (int i = 0; i < sec->wallnum; i++, v++)
 						{
-							Vertex v;
+							v->position[0] = s->floor.buffer[i].x;
+							v->position[1] = s->floor.buffer[i].y;
+							v->position[2] = s->floor.buffer[i].z;
 
-							v.position[0] = s->floor.buffer[i].x;
-							v.position[1] = s->floor.buffer[i].y;
-							v.position[2] = s->floor.buffer[i].z;
-
-							v.st[0] = s->floor.buffer[i].u;
-							v.st[1] = s->floor.buffer[i].v;
-
-							board_vertexes[s->floor.vertoffset + i] = v;
+							v->st[0] = s->floor.buffer[i].u;
+							v->st[1] = s->floor.buffer[i].v;
 						}
 
 						for (int i = 0; i < s->floor.indicescount; i++)
@@ -2742,7 +2745,7 @@ finish:
 						}
 					}
 
-					polymer_uploadverts(s->floor.material.tilenum, s->floor.vertoffset, sec->wallnum, s->floor.indexoffset, s->floor.indicescount, s->floor.material.shadeoffset, s->floor.material.visibility, s->floorpal);
+                    polymer_endwriteverts(s->floor.material.tilenum, s->floor.vertoffset, sec->wallnum, s->floor.indexoffset, s->floor.indicescount, s->floor.material.shadeoffset, s->floor.material.visibility, s->floorpal);
 
 					if (s->ceil.vertoffset == -1)
 					{
@@ -2754,30 +2757,32 @@ finish:
 						numBoardIndexes += s->ceil.indicescount;
 					}
 
-					for (int i = 0; i < sec->wallnum; i++)
-					{
-						Vertex v;
+                    {
+                        Vertex* v = polymer_beginwriteverts(s->ceil.vertoffset);
 
-						v.position[0] = s->ceil.buffer[i].x;
-						v.position[1] = s->ceil.buffer[i].y;
-						v.position[2] = s->ceil.buffer[i].z;
+						for (int i = 0; i < sec->wallnum; i++, v++)
+						{
+							v->position[0] = s->ceil.buffer[i].x;
+							v->position[1] = s->ceil.buffer[i].y;
+							v->position[2] = s->ceil.buffer[i].z;
 
-						v.st[0] = s->ceil.buffer[i].u;
-						v.st[1] = s->ceil.buffer[i].v;
+							v->st[0] = s->ceil.buffer[i].u;
+							v->st[1] = s->ceil.buffer[i].v;
 
-						//v.normal.x = s->ceil.buffer->normal[0];
-						//v.normal.y = s->ceil.buffer->normal[1];
-						//v.normal.z = s->ceil.buffer->normal[2];
+							//v.normal.x = s->ceil.buffer->normal[0];
+							//v.normal.y = s->ceil.buffer->normal[1];
+							//v.normal.z = s->ceil.buffer->normal[2];
 
-						board_vertexes[s->ceil.vertoffset + i] = v;
-					}
+							//board_vertexes[s->ceil.vertoffset + i] = v;
+						}
 
-					for (int i = 0; i < s->ceil.indicescount; i++)
-					{
-						board_indexes_table[s->ceil.indexoffset + i] = s->ceil.indices[i] + s->ceil.vertoffset;
-					}
+						for (int i = 0; i < s->ceil.indicescount; i++)
+						{
+							board_indexes_table[s->ceil.indexoffset + i] = s->ceil.indices[i] + s->ceil.vertoffset;
+						}
 
-					polymer_uploadverts(s->ceil.material.tilenum, s->ceil.vertoffset, sec->wallnum, s->ceil.indexoffset, s->ceil.indicescount, s->ceil.material.shadeoffset, s->ceil.material.visibility, s->ceilingpal);
+                        polymer_endwriteverts(s->ceil.material.tilenum, s->ceil.vertoffset, sec->wallnum, s->ceil.indexoffset, s->ceil.indicescount, s->ceil.material.shadeoffset, s->ceil.material.visibility, s->ceilingpal);
+                    }					
 				}
 			}
 		}
@@ -3514,18 +3519,15 @@ static void         polymer_updatewall(int16_t wallnum)
 
 				if ((w->underover & 1) && (!parallaxedfloor || (searchit == 2)))
 				{
-					for (int i = 0; i < 4; i++)
+                    Vertex* v = polymer_beginwriteverts(w->wall.vertoffset);
+					for (int i = 0; i < 4; i++, v++)
 					{
-						Vertex v;
+						v->position[0] = w->wall.buffer[i].x;
+						v->position[1] = w->wall.buffer[i].y;
+						v->position[2] = w->wall.buffer[i].z;
 
-						v.position[0] = w->wall.buffer[i].x;
-						v.position[1] = w->wall.buffer[i].y;
-						v.position[2] = w->wall.buffer[i].z;
-
-						v.st[0] = w->wall.buffer[i].u;
-						v.st[1] = w->wall.buffer[i].v;
-
-						board_vertexes[w->wall.vertoffset + i] = v;
+						v->st[0] = w->wall.buffer[i].u;
+						v->st[1] = w->wall.buffer[i].v;
 					}
 
 
@@ -3534,7 +3536,7 @@ static void         polymer_updatewall(int16_t wallnum)
 						board_indexes_table[w->wall.indexoffset + i] = (indexes[i] + w->wall.vertoffset);
 					}
 
-					polymer_uploadverts(w->wall.material.tilenum, w->wall.vertoffset, 4, w->wall.indexoffset, 6, w->wall.material.shadeoffset, w->wall.material.visibility, w->pal);
+                    polymer_endwriteverts(w->wall.material.tilenum, w->wall.vertoffset, 4, w->wall.indexoffset, 6, w->wall.material.shadeoffset, w->wall.material.visibility, w->pal);
 				}
 
 				if ((w->underover & 2) && (!parallaxedceiling || (searchit == 2)))
@@ -3550,18 +3552,15 @@ static void         polymer_updatewall(int16_t wallnum)
 					}
 					if (w->over.buffer)
 					{
-						for (int i = 0; i < 4; i++)
+                        Vertex* v = polymer_beginwriteverts(w->over.vertoffset);
+						for (int i = 0; i < 4; i++, v++)
 						{
-							Vertex v;
+							v->position[0] = w->over.buffer[i].x;
+							v->position[1] = w->over.buffer[i].y;
+							v->position[2] = w->over.buffer[i].z;
 
-							v.position[0] = w->over.buffer[i].x;
-							v.position[1] = w->over.buffer[i].y;
-							v.position[2] = w->over.buffer[i].z;
-
-							v.st[0] = w->over.buffer[i].u;
-							v.st[1] = w->over.buffer[i].v;
-
-							board_vertexes[w->over.vertoffset + i] = v;
+							v->st[0] = w->over.buffer[i].u;
+							v->st[1] = w->over.buffer[i].v;
 						}
 					}
 
@@ -3570,7 +3569,7 @@ static void         polymer_updatewall(int16_t wallnum)
 						board_indexes_table[w->over.indexoffset + i] = (indexes[i] + w->over.vertoffset);
 					}
 
-					polymer_uploadverts(w->over.material.tilenum, w->over.vertoffset, 4, w->over.indexoffset, 6, w->over.material.shadeoffset, w->over.material.visibility, w->pal);
+                    polymer_endwriteverts(w->over.material.tilenum, w->over.vertoffset, 4, w->over.indexoffset, 6, w->over.material.shadeoffset, w->over.material.visibility, w->pal);
 				}
 
 				// Masks
@@ -3587,18 +3586,15 @@ static void         polymer_updatewall(int16_t wallnum)
 					}
 					if (w->mask.buffer)
 					{
-						for (int i = 0; i < 4; i++)
+                        Vertex* v = polymer_beginwriteverts(w->mask.vertoffset);
+						for (int i = 0; i < 4; i++, v++)
 						{
-							Vertex v;
+							v->position[0] = w->mask.buffer[i].x;
+							v->position[1] = w->mask.buffer[i].y;
+							v->position[2] = w->mask.buffer[i].z;
 
-							v.position[0] = w->mask.buffer[i].x;
-							v.position[1] = w->mask.buffer[i].y;
-							v.position[2] = w->mask.buffer[i].z;
-
-							v.st[0] = w->mask.buffer[i].u;
-							v.st[1] = w->mask.buffer[i].v;
-
-							board_vertexes[w->mask.vertoffset + i] = v;
+							v->st[0] = w->mask.buffer[i].u;
+							v->st[1] = w->mask.buffer[i].v;
 						}
 					}
 
@@ -3607,7 +3603,7 @@ static void         polymer_updatewall(int16_t wallnum)
 						board_indexes_table[w->mask.indexoffset + i] = (indexes[i] + w->mask.vertoffset);
 					}
 
-					polymer_uploadverts(w->mask.material.tilenum, w->mask.vertoffset, 4, w->mask.indexoffset, 6, w->mask.material.shadeoffset, w->mask.material.visibility, w->pal);
+                    polymer_endwriteverts(w->mask.material.tilenum, w->mask.vertoffset, 4, w->mask.indexoffset, 6, w->mask.material.shadeoffset, w->mask.material.visibility, w->pal);
 				}
 			}
 
@@ -4095,13 +4091,14 @@ void polymer_updatesprited3d12(int32_t snum) {
 
 	_prplane* plane = &sprite->plane;
 
-	for (i = 0; i < plane->vertcount; i++, numSpriteVertexes++) {
-		board_vertexes[startVertex + i].position[0] = plane->buffer[i].x;
-		board_vertexes[startVertex + i].position[1] = plane->buffer[i].y;
-		board_vertexes[startVertex + i].position[2] = plane->buffer[i].z;
+    Vertex* v = polymer_beginwriteverts(startVertex);
+	for (i = 0; i < plane->vertcount; i++, numSpriteVertexes++, v++) {
+		v->position[0] = plane->buffer[i].x;
+		v->position[1] = plane->buffer[i].y;
+		v->position[2] = plane->buffer[i].z;
 
-		board_vertexes[startVertex + i].st[0] = plane->buffer[i].u;
-		board_vertexes[startVertex + i].st[1] = plane->buffer[i].v;
+		v->st[0] = plane->buffer[i].u;
+		v->st[1] = plane->buffer[i].v;
 	}
 
 	if (plane->indicescount == NULL) {
@@ -4130,12 +4127,12 @@ void polymer_updatesprited3d12(int32_t snum) {
 	if (plane->indicescount == NULL) {
 		numIndexes = 6;
 		GL_DrawBuffer(startIndex, 6);
-		polymer_uploadverts(tspr->picnum, startVertex, sprite->plane.vertcount, startIndex, 6, sprite->plane.material.shadeoffset, sprite->plane.material.visibility, tspr->pal);
+        polymer_endwriteverts(tspr->picnum, startVertex, sprite->plane.vertcount, startIndex, 6, sprite->plane.material.shadeoffset, sprite->plane.material.visibility, tspr->pal);
 	}
 	else {
 		numIndexes = sprite->plane.indicescount;
 		GL_DrawBuffer(startIndex, sprite->plane.indicescount);
-		polymer_uploadverts(tspr->picnum, startVertex, sprite->plane.vertcount, startIndex, sprite->plane.indicescount, sprite->plane.material.shadeoffset, sprite->plane.material.visibility, tspr->pal);
+        polymer_endwriteverts(tspr->picnum, startVertex, sprite->plane.vertcount, startIndex, sprite->plane.indicescount, sprite->plane.material.shadeoffset, sprite->plane.material.visibility, tspr->pal);
 	}
 
 	memcpy(((unsigned char*)prd3d12_index_buffer->cpu_mapped_address) + (startIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
