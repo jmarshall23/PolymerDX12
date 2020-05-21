@@ -3646,6 +3646,7 @@ int32_t app_main(int32_t argc, char const * const * argv)
     wm_msgbox("Pre-Release Software Warning", "%s is not ready for public use. Proceed with caution!", AppProperName);
 
 #ifdef STARTUP_SETUP_WINDOW
+#ifndef _DEBUG
     if (i < 0 || CommandSetup || (ud_setup.ForceSetup && !g_noSetup))
     {
         if (quitevent || !startwin_run())
@@ -3655,6 +3656,7 @@ int32_t app_main(int32_t argc, char const * const * argv)
             exit(0);
         }
     }
+#endif
 #endif
 
     SW_LoadGroups();
