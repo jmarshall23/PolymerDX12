@@ -1733,7 +1733,7 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
 			settings.width = x;
 			settings.height = y;
 			settings.swapchain.image_count = k_image_count;
-			settings.swapchain.sample_count = tr_sample_count_8;
+			settings.swapchain.sample_count = tr_sample_count_4;
 			settings.swapchain.color_format = tr_format_b8g8r8a8_unorm;
 			settings.swapchain.depth_stencil_format = tr_format_d32_float;
 			settings.swapchain.depth_stencil_clear_value.depth = 1.0f;

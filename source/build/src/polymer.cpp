@@ -5391,7 +5391,7 @@ static _prbucket*   polymer_getbuildmaterial(_prmaterial* material, int16_t tile
         }
         else
         {
-            if(!uploadedbasepaltable[pal] && basepaltable[pal]) {
+            {
                 polymer_setupartmap(tilenum, pal);
             }
         }
