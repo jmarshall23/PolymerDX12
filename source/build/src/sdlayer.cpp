@@ -1086,18 +1086,18 @@ int32_t initinput(void)
         Bstrncpyz(g_keyNameTable[keytranslation[i]], SDL_GetKeyName(SDL_SCANCODE_TO_KEYCODE(i)), sizeof(g_keyNameTable[0]));
     }
 
-#if SDL_MAJOR_VERSION >= 2
-    if (!SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER))
-#else
-    if (!SDL_InitSubSystem(SDL_INIT_JOYSTICK))
-#endif
-    {
-#if SDL_MAJOR_VERSION >= 2
-        LoadSDLControllerDB();
-#endif
-
-        joyScanDevices();
-    }
+//#if SDL_MAJOR_VERSION >= 2
+//    if (!SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER))
+//#else
+//    if (!SDL_InitSubSystem(SDL_INIT_JOYSTICK))
+//#endif
+//    {
+//#if SDL_MAJOR_VERSION >= 2
+//        LoadSDLControllerDB();
+//#endif
+//
+//        joyScanDevices();
+//    }
 
     return 0;
 }

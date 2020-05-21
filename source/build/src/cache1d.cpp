@@ -49,25 +49,6 @@ static int32_t lockrecip[200];
 
 cache1d g_cache;
 
-#if !defined DEBUG_ALLOCACHE_AS_MALLOC
-static int osdfunc_cacheinfo(osdcmdptr_t UNUSED(parm))
-{
-    UNREFERENCED_CONST_PARAMETER(parm);
-
-    g_cache.report();
-
-    return OSDCMD_OK;
-}
-
-void cache1d::reset(void)
-{
-    Bmemset(m_index, 0, m_maxBlocks * sizeof(cacheindex_t));
-
-    m_index[0].leng = m_totalSize;
-    m_index[0].lock = &zerochar;
-
-    m_numBlocks = 1;
-}
 
 // jmarshall
 int32_t kpzbufload2(char const* const filnam, char** buffer)
@@ -92,6 +73,26 @@ int32_t kpzbufload2(char const* const filnam, char** buffer)
 	return leng;
 }
 // jmarshall end
+
+#if 0
+static int osdfunc_cacheinfo(osdcmdptr_t UNUSED(parm))
+{
+    UNREFERENCED_CONST_PARAMETER(parm);
+
+    g_cache.report();
+
+    return OSDCMD_OK;
+}
+
+void cache1d::reset(void)
+{
+    Bmemset(m_index, 0, m_maxBlocks * sizeof(cacheindex_t));
+
+    m_index[0].leng = m_totalSize;
+    m_index[0].lock = &zerochar;
+
+    m_numBlocks = 1;
+}
 
 void cache1d::initBuffer(intptr_t dacachestart, uint32_t dacachesize, uint32_t minsize /*= 0*/)
 {

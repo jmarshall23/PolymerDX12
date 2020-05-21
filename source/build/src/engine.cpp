@@ -11182,7 +11182,7 @@ int32_t qloadkvx(int32_t voxindex, const char *filename)
     voxfilenames[voxindex] = Xstrdup(filename);
 #endif
 
-    g_haveVoxels = 1;
+   // g_haveVoxels = 1;
 
     return 0;
 }
