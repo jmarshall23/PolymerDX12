@@ -1,9 +1,25 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="DebugVK|Win32">
+      <Configuration>DebugVK</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="DebugVK|x64">
+      <Configuration>DebugVK</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
       <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="ReleaseVK|Win32">
+      <Configuration>ReleaseVK</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="ReleaseVK|x64">
+      <Configuration>ReleaseVK</Configuration>
+      <Platform>x64</Platform>
     </ProjectConfiguration>
     <ProjectConfiguration Include="Release|Win32">
       <Configuration>Release</Configuration>
@@ -31,7 +47,18 @@
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v142</PlatformToolset>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v142</PlatformToolset>
@@ -42,7 +69,18 @@
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v142</PlatformToolset>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v142</PlatformToolset>
@@ -61,7 +99,15 @@
     <Import Project="props\build_x64.props" />
     <Import Project="props\build_common.props" />
   </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'" Label="PropertySheets">
+    <Import Project="props\build_x64.props" />
+    <Import Project="props\build_common.props" />
+  </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="props\build_x64.props" />
+    <Import Project="props\build_common.props" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'" Label="PropertySheets">
     <Import Project="props\build_x64.props" />
     <Import Project="props\build_common.props" />
   </ImportGroup>
@@ -69,12 +115,26 @@
     <Import Project="props\build_x86.props" />
     <Import Project="props\build_common.props" />
   </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'" Label="PropertySheets">
+    <Import Project="props\build_x86.props" />
+    <Import Project="props\build_common.props" />
+  </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="props\build_x86.props" />
+    <Import Project="props\build_common.props" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'" Label="PropertySheets">
     <Import Project="props\build_x86.props" />
     <Import Project="props\build_common.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(SolutionDir)Build\$(ProjectName)\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(Platform)\Build\$(ProjectName)\$(Configuration)\</IntDir>
+    <CustomBuildBeforeTargets>BuildGenerateSources</CustomBuildBeforeTargets>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)Build\$(ProjectName)\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(Platform)\Build\$(ProjectName)\$(Configuration)\</IntDir>
@@ -86,13 +146,31 @@
     <IntDir>$(Platform)\Build\$(ProjectName)\$(Configuration)\</IntDir>
     <CustomBuildBeforeTargets>BuildGenerateSources</CustomBuildBeforeTargets>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(SolutionDir)Build\$(ProjectName)\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(Platform)\Build\$(ProjectName)\$(Configuration)\</IntDir>
+    <CustomBuildBeforeTargets>BuildGenerateSources</CustomBuildBeforeTargets>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)Build\$(ProjectName)\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(Platform)\Build\$(ProjectName)\$(Configuration)\</IntDir>
     <CustomBuildBeforeTargets>BuildGenerateSources</CustomBuildBeforeTargets>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(SolutionDir)Build\$(ProjectName)\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(Platform)\Build\$(ProjectName)\$(Configuration)\</IntDir>
+    <CustomBuildBeforeTargets>BuildGenerateSources</CustomBuildBeforeTargets>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(SolutionDir)Build\$(ProjectName)\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(Platform)\Build\$(ProjectName)\$(Configuration)\</IntDir>
+    <CustomBuildBeforeTargets>BuildGenerateSources</CustomBuildBeforeTargets>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)Build\$(ProjectName)\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(Platform)\Build\$(ProjectName)\$(Configuration)\</IntDir>
@@ -124,7 +202,55 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">
+    <ClCompile>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>BUILD_VULKAN;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <OmitFramePointers>true</OmitFramePointers>
+      <LanguageStandard>stdcpp14</LanguageStandard>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DiagnosticsFormat>Caret</DiagnosticsFormat>
+      <SupportJustMyCode>true</SupportJustMyCode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <LanguageStandard>stdcpp14</LanguageStandard>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <DiagnosticsFormat>Caret</DiagnosticsFormat>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'">
     <ClCompile>
       <PrecompiledHeader>
       </PrecompiledHeader>
@@ -169,7 +295,56 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">
+    <ClCompile>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>BUILD_VULKAN;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <OmitFramePointers>false</OmitFramePointers>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <LanguageStandard>stdcpp14</LanguageStandard>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <DiagnosticsFormat>Caret</DiagnosticsFormat>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <OmitFramePointers>true</OmitFramePointers>
+      <LanguageStandard>stdcpp14</LanguageStandard>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DiagnosticsFormat>Caret</DiagnosticsFormat>
+      <SupportJustMyCode>true</SupportJustMyCode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">
     <ClCompile>
       <PrecompiledHeader>
       </PrecompiledHeader>
@@ -199,7 +374,9 @@
     <ClCompile Include="..\..\source\build\src\2d.cpp" />
     <ClCompile Include="..\..\source\build\src\a-c.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\source\build\src\animvpx.cpp" />
     <ClCompile Include="..\..\source\build\src\baselayer.cpp" />
@@ -215,9 +392,13 @@
     <ClCompile Include="..\..\source\build\src\dxtfilter.cpp" />
     <ClCompile Include="..\..\source\build\src\dynamicgtk.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\source\build\src\enet.cpp" />
     <ClCompile Include="..\..\source\build\src\engine.cpp" />
@@ -227,9 +408,13 @@
     <ClCompile Include="..\..\source\build\src\gpustates.cpp" />
     <ClCompile Include="..\..\source\build\src\gtkbits.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\source\build\src\hash.cpp" />
     <ClCompile Include="..\..\source\build\src\hightile.cpp" />
@@ -238,9 +423,13 @@
     <ClCompile Include="..\..\source\build\src\kplib.cpp" />
     <ClCompile Include="..\..\source\build\src\lunatic.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\source\build\src\lz4.c" />
     <ClCompile Include="..\..\source\build\src\md4.cpp" />
@@ -248,9 +437,13 @@
     <ClCompile Include="..\..\source\build\src\mhk.cpp" />
     <ClCompile Include="..\..\source\build\src\miniz.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\source\build\src\miniz_tdef.c" />
     <ClCompile Include="..\..\source\build\src\miniz_tinfl.c" />
@@ -260,9 +453,13 @@
     <ClCompile Include="..\..\source\build\src\palette.cpp" />
     <ClCompile Include="..\..\source\build\src\pngwrite.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\source\build\src\polymer.cpp" />
     <ClCompile Include="..\..\source\build\src\polymer_ogl_shaders.cpp" />
@@ -270,9 +467,13 @@
     <ClCompile Include="..\..\source\build\src\pragmas.cpp" />
     <ClCompile Include="..\..\source\build\src\rawinput.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\source\build\src\rev.cpp" />
     <ClCompile Include="..\..\source\build\src\screenshot.cpp" />
@@ -281,15 +482,23 @@
     <ClCompile Include="..\..\source\build\src\sdlayer.cpp" />
     <ClCompile Include="..\..\source\build\src\sdlayer12.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\source\build\src\sdlkeytrans.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\source\build\src\sjson.cpp" />
     <ClCompile Include="..\..\source\build\src\smalltextfont.cpp" />
@@ -299,25 +508,38 @@
     <ClCompile Include="..\..\source\build\src\tilepacker.cpp" />
     <ClCompile Include="..\..\source\build\src\tiles.cpp" />
     <ClCompile Include="..\..\source\build\src\timer.cpp" />
-    <ClCompile Include="..\..\source\build\src\tinydx.cpp" />
+    <ClCompile Include="..\..\source\build\src\tinydx.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="..\..\source\build\src\tinyvk.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\source\build\src\vfs.cpp" />
     <ClCompile Include="..\..\source\build\src\voxmodel.cpp" />
     <ClCompile Include="..\..\source\build\src\wiibits.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\source\build\src\winbits.cpp" />
     <ClCompile Include="..\..\source\build\src\winlayer.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="..\..\source\build\src\xxhash.c" />
     <ClCompile Include="..\..\source\build\src\zpl.cpp" />
@@ -403,67 +625,16 @@
     <MASM Include="..\..\source\build\src\a.masm">
       <FileType>Document</FileType>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|Win32'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">true</ExcludedFromBuild>
       <TreatWarningsAsErrors Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</TreatWarningsAsErrors>
+      <TreatWarningsAsErrors Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">true</TreatWarningsAsErrors>
     </MASM>
-  </ItemGroup>
-  <ItemGroup>
-    <CustomBuild Include="..\..\source\build\src\polymost1Frag.glsl">
-      <FileType>Document</FileType>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">echo char const *%(Filename) = R^"shader( &gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-type %(Identity) &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-echo )shader^"; &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-cl /c /MP /GS /GL /analyze- /W3 /wd"4996" /wd"4244" /wd"4018" /wd"4267" /Gy /Zc:wchar_t /I"./include" /I"./include/vpx/" /I"./include/sdl2/" /I"../../source/build/include" /I"../../source/mact/include" /I"../../source/audiolib/include" /I"../../source/glad/include" /I"../../source/libxmp-lite/include" /I"../../source/libxmp-lite/include/libxmp-lite" /Gm- /O2 /Fd"Win32\Build\build\Release\build.pdb" /Zc:inline /fp:precise /D "NDEBUG" /D "_LIB" /D "_CRT_SECURE_NO_WARNINGS" /D "WIN32" /D "RENDERTYPESDL=1" /D "MIXERTYPEWIN=1" /D "SDL_USEFOLDER" /D "SDL_TARGET=2" /D "USE_OPENGL=1" /D "POLYMER=1" /D "STARTUP_WINDOW" /D "USE_LIBVPX" /D "HAVE_VORBIS" /D "HAVE_XMP" /errorReport:prompt /WX- /Zc:forScope /arch:SSE2 /Gd /Oy /Oi /MD /Fa"Win32\Build\build\Release\\" /EHs /nologo /Fo"Win32\Build\build\Release\\" /Ot /Fp"Win32\Build\build\Release\build.pch" "$(IntermediateOutputPath)%(Filename)%(Extension).cpp"</Command>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">echo char const *%(Filename) = R^"shader( &gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-type %(Identity) &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-echo )shader^"; &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-cl /c /MP /GS- /analyze- /W3 /wd"4996" /wd"4244" /wd"4018" /wd"4267" /Gy /Zc:wchar_t /I"./include" /I"./include/vpx/" /I"./include/sdl2/" /I"../../source/build/include" /I"../../source/mact/include" /I"../../source/audiolib/include" /I"../../source/glad/include" /I"../../source/libxmp-lite/include" /I"../../source/libxmp-lite/include/libxmp-lite" /Zi /Gm /Od /Fd"Win32\Build\build\Debug\build.pdb" /Zc:inline /fp:precise /D "_DEBUG" /D "_LIB" /D "_CRT_SECURE_NO_WARNINGS" /D "WIN32" /D "RENDERTYPESDL=1" /D "MIXERTYPEWIN=1" /D "SDL_USEFOLDER" /D "SDL_TARGET=2" /D "USE_OPENGL=1" /D "POLYMER=1" /D "STARTUP_WINDOW" /D "USE_LIBVPX" /D "HAVE_VORBIS" /D "HAVE_XMP" /errorReport:prompt /WX- /Zc:forScope /RTC1 /arch:SSE2 /Gd /Oy- /MDd /Fa"Win32\Build\build\Debug\\" /EHs /nologo /Fo"Win32\Build\build\Debug\\" /Fp"Win32\Build\build\Debug\build.pch" $(IntermediateOutputPath)%(Filename)%(Extension).cpp</Command>
-      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compiling shader to %(Identity).obj</Message>
-      <Message Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compiling shader to %(Identity).obj</Message>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">echo char const *%(Filename) = R^"shader( &gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-type %(Identity) &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-echo )shader^"; &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-cl /c /MP /GS /GL /W3 /wd"4996" /wd"4244" /wd"4018" /wd"4267" /Gy /Zc:wchar_t /I"./include" /I"./include/vpx/" /I"./include/sdl2/" /I"../../source/build/include" /I"../../source/mact/include" /I"../../source/audiolib/include" /I"../../source/glad/include" /I"../../source/libxmp-lite/include" /I"../../source/libxmp-lite/include/libxmp-lite" /Gm- /O2 /Fd"x64\Build\build\Release\build.pdb" /Zc:inline /fp:precise /D "NDEBUG" /D "_LIB" /D "_CRT_SECURE_NO_WARNINGS" /D "WIN32" /D "RENDERTYPESDL=1" /D "MIXERTYPEWIN=1" /D "SDL_USEFOLDER" /D "SDL_TARGET=2" /D "USE_OPENGL=1" /D "POLYMER=1" /D "STARTUP_WINDOW" /D "USE_LIBVPX" /D "HAVE_VORBIS" /D "HAVE_XMP" /D "NOASM=1" /errorReport:prompt /WX- /Zc:forScope /Gd /Oy /Oi /MD /Fa"x64\Build\build\Release\\" /EHs /nologo /Fo"x64\Build\build\Release\\" /Ot /Fp"x64\Build\build\Release\build.pch" $(IntermediateOutputPath)%(Filename)%(Extension).cpp</Command>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">echo char const *%(Filename) = R^"shader( &gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-type %(Identity) &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-echo )shader^"; &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-cl /c /MP /GS- /W3 /wd"4996" /wd"4244" /wd"4018" /wd"4267" /Gy /Zc:wchar_t /I"./include" /I"./include/vpx/" /I"./include/sdl2/" /I"../../source/build/include" /I"../../source/mact/include" /I"../../source/audiolib/include" /I"../../source/glad/include" /I"../../source/libxmp-lite/include" /I"../../source/libxmp-lite/include/libxmp-lite" /Zi /Gm /Od /Fd"x64\Build\build\Debug\build.pdb" /Zc:inline /fp:precise /D "_DEBUG" /D "_LIB" /D "_CRT_SECURE_NO_WARNINGS" /D "WIN32" /D "RENDERTYPESDL=1" /D "MIXERTYPEWIN=1" /D "SDL_USEFOLDER" /D "SDL_TARGET=2" /D "USE_OPENGL=1" /D "POLYMER=1" /D "STARTUP_WINDOW" /D "USE_LIBVPX" /D "HAVE_VORBIS" /D "HAVE_XMP" /D "NOASM=1" /errorReport:prompt /WX- /Zc:forScope /RTC1 /Gd /Oy- /MDd /Fa"x64\Build\build\Debug\\" /EHs /nologo /Fo"x64\Build\build\Debug\\" /Fp"x64\Build\build\Debug\build.pch" $(IntermediateOutputPath)%(Filename)%(Extension).cpp</Command>
-      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling shader to %(Identity).obj</Message>
-      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling shader to %(Identity).obj</Message>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntermediateOutputPath)%(Filename)%(Extension).obj;$(IntermediateOutputPath)%(Filename)%(Extension).cpp</Outputs>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntermediateOutputPath)%(Filename)%(Extension).obj;$(IntermediateOutputPath)%(Filename)%(Extension).cpp</Outputs>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntermediateOutputPath)%(Filename)%(Extension).obj;$(IntermediateOutputPath)%(Filename)%(Extension).cpp</Outputs>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntermediateOutputPath)%(Filename)%(Extension).obj;$(IntermediateOutputPath)%(Filename)%(Extension).cpp</Outputs>
-    </CustomBuild>
-    <CustomBuild Include="..\..\source\build\src\polymost1Vert.glsl">
-      <FileType>Document</FileType>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">echo char const *%(Filename) = R^"shader( &gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-type %(Identity) &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-echo )shader^"; &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-cl /c /MP /GS /GL /analyze- /W3 /wd"4996" /wd"4244" /wd"4018" /wd"4267" /Gy /Zc:wchar_t /I"./include" /I"./include/vpx/" /I"./include/sdl2/" /I"../../source/build/include" /I"../../source/mact/include" /I"../../source/audiolib/include" /I"../../source/glad/include" /I"../../source/libxmp-lite/include" /I"../../source/libxmp-lite/include/libxmp-lite" /Gm- /O2 /Fd"Win32\Build\build\Release\build.pdb" /Zc:inline /fp:precise /D "NDEBUG" /D "_LIB" /D "_CRT_SECURE_NO_WARNINGS" /D "WIN32" /D "RENDERTYPESDL=1" /D "MIXERTYPEWIN=1" /D "SDL_USEFOLDER" /D "SDL_TARGET=2" /D "USE_OPENGL=1" /D "POLYMER=1" /D "STARTUP_WINDOW" /D "USE_LIBVPX" /D "HAVE_VORBIS" /D "HAVE_XMP" /errorReport:prompt /WX- /Zc:forScope /arch:SSE2 /Gd /Oy /Oi /MD /Fa"Win32\Build\build\Release\\" /EHs /nologo /Fo"Win32\Build\build\Release\\" /Ot /Fp"Win32\Build\build\Release\build.pch" "$(IntermediateOutputPath)%(Filename)%(Extension).cpp"</Command>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">echo char const *%(Filename) = R^"shader( &gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-type %(Identity) &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-echo )shader^"; &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-cl /c /MP /GS- /analyze- /W3 /wd"4996" /wd"4244" /wd"4018" /wd"4267" /Gy /Zc:wchar_t /I"./include" /I"./include/vpx/" /I"./include/sdl2/" /I"../../source/build/include" /I"../../source/mact/include" /I"../../source/audiolib/include" /I"../../source/glad/include" /I"../../source/libxmp-lite/include" /I"../../source/libxmp-lite/include/libxmp-lite" /Zi /Gm /Od /Fd"Win32\Build\build\Debug\build.pdb" /Zc:inline /fp:precise /D "_DEBUG" /D "_LIB" /D "_CRT_SECURE_NO_WARNINGS" /D "WIN32" /D "RENDERTYPESDL=1" /D "MIXERTYPEWIN=1" /D "SDL_USEFOLDER" /D "SDL_TARGET=2" /D "USE_OPENGL=1" /D "POLYMER=1" /D "STARTUP_WINDOW" /D "USE_LIBVPX" /D "HAVE_VORBIS" /D "HAVE_XMP" /errorReport:prompt /WX- /Zc:forScope /RTC1 /arch:SSE2 /Gd /Oy- /MDd /Fa"Win32\Build\build\Debug\\" /EHs /nologo /Fo"Win32\Build\build\Debug\\" /Fp"Win32\Build\build\Debug\build.pch" $(IntermediateOutputPath)%(Filename)%(Extension).cpp</Command>
-      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compiling shader to %(Identity).obj</Message>
-      <Message Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compiling shader to %(Identity).obj</Message>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">echo char const *%(Filename) = R^"shader( &gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-type %(Identity) &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-echo )shader^"; &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-cl /c /MP /GS /GL /W3 /wd"4996" /wd"4244" /wd"4018" /wd"4267" /Gy /Zc:wchar_t /I"./include" /I"./include/vpx/" /I"./include/sdl2/" /I"../../source/build/include" /I"../../source/mact/include" /I"../../source/audiolib/include" /I"../../source/glad/include" /I"../../source/libxmp-lite/include" /I"../../source/libxmp-lite/include/libxmp-lite" /Gm- /O2 /Fd"x64\Build\build\Release\build.pdb" /Zc:inline /fp:precise /D "NDEBUG" /D "_LIB" /D "_CRT_SECURE_NO_WARNINGS" /D "WIN32" /D "RENDERTYPESDL=1" /D "MIXERTYPEWIN=1" /D "SDL_USEFOLDER" /D "SDL_TARGET=2" /D "USE_OPENGL=1" /D "POLYMER=1" /D "STARTUP_WINDOW" /D "USE_LIBVPX" /D "HAVE_VORBIS" /D "HAVE_XMP" /D "NOASM=1" /errorReport:prompt /WX- /Zc:forScope /Gd /Oy /Oi /MD /Fa"x64\Build\build\Release\\" /EHs /nologo /Fo"x64\Build\build\Release\\" /Ot /Fp"x64\Build\build\Release\build.pch" $(IntermediateOutputPath)%(Filename)%(Extension).cpp</Command>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">echo char const *%(Filename) = R^"shader( &gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-type %(Identity) &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-echo )shader^"; &gt;&gt; $(IntermediateOutputPath)%(Filename)%(Extension).cpp
-cl /c /MP /GS- /W3 /wd"4996" /wd"4244" /wd"4018" /wd"4267" /Gy /Zc:wchar_t /I"./include" /I"./include/vpx/" /I"./include/sdl2/" /I"../../source/build/include" /I"../../source/mact/include" /I"../../source/audiolib/include" /I"../../source/glad/include" /I"../../source/libxmp-lite/include" /I"../../source/libxmp-lite/include/libxmp-lite" /Zi /Gm /Od /Fd"x64\Build\build\Debug\build.pdb" /Zc:inline /fp:precise /D "_DEBUG" /D "_LIB" /D "_CRT_SECURE_NO_WARNINGS" /D "WIN32" /D "RENDERTYPESDL=1" /D "MIXERTYPEWIN=1" /D "SDL_USEFOLDER" /D "SDL_TARGET=2" /D "USE_OPENGL=1" /D "POLYMER=1" /D "STARTUP_WINDOW" /D "USE_LIBVPX" /D "HAVE_VORBIS" /D "HAVE_XMP" /D "NOASM=1" /errorReport:prompt /WX- /Zc:forScope /RTC1 /Gd /Oy- /MDd /Fa"x64\Build\build\Debug\\" /EHs /nologo /Fo"x64\Build\build\Debug\\" /Fp"x64\Build\build\Debug\build.pch" $(IntermediateOutputPath)%(Filename)%(Extension).cpp</Command>
-      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling shader to %(Identity).obj</Message>
-      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling shader to %(Identity).obj</Message>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntermediateOutputPath)%(Filename)%(Extension).obj;$(IntermediateOutputPath)%(Filename)%(Extension).cpp</Outputs>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntermediateOutputPath)%(Filename)%(Extension).obj;$(IntermediateOutputPath)%(Filename)%(Extension).cpp</Outputs>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntermediateOutputPath)%(Filename)%(Extension).obj;$(IntermediateOutputPath)%(Filename)%(Extension).cpp</Outputs>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntermediateOutputPath)%(Filename)%(Extension).obj;$(IntermediateOutputPath)%(Filename)%(Extension).cpp</Outputs>
-    </CustomBuild>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
