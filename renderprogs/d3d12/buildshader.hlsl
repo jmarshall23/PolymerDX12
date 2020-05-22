@@ -13,7 +13,7 @@ cbuffer UniformBlock0 : register(b0)
 struct VSOutput {
 	float4 Position : SV_POSITION;
 	float2 TexCoord : TEXCOORD;
-	float4 TileRect	: COLOR;
+	nointerpolation float4 TileRect	: COLOR;
 	nointerpolation float3 info : TEXCOORD1;
 	float3 worldPositon : TEXCOORD2;
 };
