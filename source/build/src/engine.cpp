@@ -142,7 +142,7 @@ int32_t benchmarkScreenshot = 0;
 static int32_t oxdimen = -1, oviewingrange = -1, oxyaspect = -1;
 
 // r_usenewaspect is the cvar, newaspect_enable to trigger the new behaviour in the code
-int32_t r_usenewaspect = 1, newaspect_enable=0;
+int32_t r_usenewaspect = 0, newaspect_enable=0;
 uint32_t r_screenxy = 0;
 
 int32_t r_fpgrouscan = 1;
@@ -1408,12 +1408,14 @@ int32_t globvis2, globalvisibility2, globalhisibility2, globalpisibility2, globa
 //char globparaceilclip, globparaflorclip;
 
 int32_t xyaspect;
-static int32_t viewingrangerecip;
+int32_t viewingrangerecip;
 
 static char globalxshift, globalyshift;
 static int32_t globalxpanning, globalypanning;
 int32_t globalshade, globalorientation;
 int16_t globalpicnum;
+int32_t globalsectornum;
+int32_t globalwallnum = -1;
 static int16_t globalshiftval;
 #ifdef HIGH_PRECISION_SPRITE
 static int64_t globalzd;
@@ -6604,6 +6606,10 @@ static void renderDrawSprite(int32_t snum)
             glEnable(GL_ALPHA_TEST);
             glEnable(GL_BLEND);
         }
+        //extern bool polymostOcclusionGatherOnly;
+        //polymostOcclusionGatherOnly = true;
+        //polymost_drawsprite(snum);
+        //polymostOcclusionGatherOnly = false;
         polymer_drawsprite(snum);
         if (rhiType == RHI_OPENGL)
         {
@@ -8919,6 +8925,24 @@ int32_t renderDrawRoomsQ16(int32_t daposx, int32_t daposy, int32_t daposz,
         }
     }
 
+// jmarshall - moved this here for Polymer Occlusion
+	// Update starting sector number (common to classic and Polymost).
+    // ADJUST_GLOBALCURSECTNUM.
+	if (globalcursectnum >= MAXSECTORS)
+		globalcursectnum -= MAXSECTORS;
+	else
+	{
+		i = globalcursectnum;
+		updatesector(globalposx, globalposy, &globalcursectnum);
+		if (globalcursectnum < 0) globalcursectnum = i;
+
+		// PK 20110123: I'm not sure what the line above is supposed to do, but 'i'
+		//              *can* be negative, so let's just quit here in that case...
+		if (globalcursectnum < 0)
+			return 0;
+	}
+// jmarshall end
+
 #ifdef USE_OPENGL
 # ifdef POLYMER
     if (videoGetRenderMode() == REND_POLYMER)
@@ -8945,22 +8969,6 @@ int32_t renderDrawRoomsQ16(int32_t daposx, int32_t daposy, int32_t daposz,
     }
 # endif
 #endif
-
-    // Update starting sector number (common to classic and Polymost).
-    // ADJUST_GLOBALCURSECTNUM.
-    if (globalcursectnum >= MAXSECTORS)
-        globalcursectnum -= MAXSECTORS;
-    else
-    {
-        i = globalcursectnum;
-        updatesector(globalposx,globalposy,&globalcursectnum);
-        if (globalcursectnum < 0) globalcursectnum = i;
-
-        // PK 20110123: I'm not sure what the line above is supposed to do, but 'i'
-        //              *can* be negative, so let's just quit here in that case...
-        if (globalcursectnum<0)
-            return 0;
-    }
 
 #ifdef USE_OPENGL
     //============================================================================= //POLYMOST BEGINS
@@ -12406,7 +12414,7 @@ int32_t setaspect_new_use_dimen = 0;
 
 void videoSetCorrectedAspect()
 {
-    if (r_usenewaspect && newaspect_enable && videoGetRenderMode() != REND_POLYMER)
+    if (r_usenewaspect && newaspect_enable)
     {
         // In DOS the game world is displayed with an aspect of 1.28 instead 1.333,
         // meaning we have to stretch it by a factor of 1.25 instead of 1.2

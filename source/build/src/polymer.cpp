@@ -122,7 +122,6 @@ const GLbitfield prindexringmapflags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT 
 _prbucket       *prbuckethead;
 int32_t         prcanbucket;
 
-
 extern tr_renderer* m_renderer;
 
 using namespace DirectX;
@@ -276,7 +275,7 @@ GLfloat         *curmodelviewmatrix;
 GLfloat         rootskymodelviewmatrix[16];
 GLfloat         *curskymodelviewmatrix;
 
-static int16_t  sectorqueue[MAXSECTORS];
+//static int16_t  sectorqueue[MAXSECTORS];
 static int16_t  querydelay[MAXSECTORS];
 static GLuint   queryid[MAXWALLS];
 static int16_t  drawingstate[MAXSECTORS];
@@ -707,6 +706,7 @@ void                polymer_loadboard(void)
     int32_t         i;
 
     polymer_freeboard();
+    polymost_resetgather();
 
     // in the big map buffer, sectors have floor and ceiling vertices for each wall first, then walls
     prwalldataoffset = numwalls * 2 * sizeof(_prvert);
@@ -774,6 +774,9 @@ void D3D12_CreateProjectionMatrix(int32_t fov, float4x4& projectionMatrix, int w
 	float           aspect;
 	float fang = (float)fov * atanf((float)viewingrange / 65536.0f) / (PI / 4);
 
+	// use horizontal fov instead of vertical
+	fang = atanf(tanf(fang * (fPI / 2048.f)) * float(windowxy2.y - windowxy1.y + 1) / float(windowxy2.x - windowxy1.x + 1) * float(xdim) / float(ydim) * (3.f / 4.f)) * (2048.f / fPI);
+
 	aspect = (float)(width + 1) / (float)(height + 1);
 
 	float matrix[16];
@@ -796,6 +799,8 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
     pthtyp*         pth;
 
     if (videoGetRenderMode() == REND_CLASSIC) return;
+
+    polymost_gatherrooms();    
 
 	memset(prd3d12_index_buffer[frameIdx]->cpu_mapped_address, 0, sizeof(int) * POLYMER_DX12_MAXINDEXES);
 
@@ -918,8 +923,8 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
 			viewMatrix = viewMatrix * translationMatrix;
 		}
 
-		D3D12_CreateProjectionMatrix(426, normalProjectionMatrix, xdim, ydim, 0.01f, 300.0f);
-        D3D12_CreateProjectionMatrix(426, biasedProjectionMatrix, xdim, ydim, 0.0105f, 300.5f);
+		D3D12_CreateProjectionMatrix(pr_fov, normalProjectionMatrix, xdim, ydim, 0.01f, 300.0f);
+        D3D12_CreateProjectionMatrix(pr_fov, biasedProjectionMatrix, xdim, ydim, 0.0105f, 300.5f);
 
 		GL_SetProjectionMatrix((float*)&normalProjectionMatrix);
 		projectionMatrixState = PROJECTION_MATRIX_NORMAL;
@@ -1285,6 +1290,9 @@ void                polymer_drawsprite(int32_t snum)
     auto const tspr = tspriteptr[snum];
     usectorptr_t sec;
 
+//    if (!polymer_isSpriteVisible(snum))
+//        return;
+
     if (pr_verbosity >= 3) OSD_Printf("PR : Sprite %i...\n", snum);
 
     if (bad_tspr(tspr))
@@ -1568,8 +1576,8 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
     int16_t         ns;
     GLint           result;
     int16_t         doquery;
-    int32_t         front;
-    int32_t         back;
+    //int32_t         front;
+    //int32_t         back;
     GLfloat         localskymodelviewmatrix[16];
     GLfloat         localmodelviewmatrix[16];
     GLfloat         localprojectionmatrix[16];
@@ -1598,9 +1606,9 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
     Bmemset(queryid, 0, sizeof(GLuint) * numwalls);
     Bmemset(drawingstate, 0, sizeof(int16_t) * numsectors);
 
-    front = 0;
-    back = 1;
-    sectorqueue[0] = dacursectnum;
+    //front = 0;
+    //back = 1;
+    //sectorqueue[0] = dacursectnum;
     drawingstate[dacursectnum] = 1;
 
     localspritesortcnt = localmaskwallcnt = 0;
@@ -1631,194 +1639,183 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
 
     prcanbucket = 1;
 
-    while (front != back)
-    {
-        sec = (usectorptr_t)&sector[sectorqueue[front]];
-
-        polymer_pokesector(sectorqueue[front]);
-        polymer_drawsector(sectorqueue[front], FALSE);
-        polymer_scansprites(sectorqueue[front], localtsprite, &localspritesortcnt);
-
-        doquery = 0;
-
-        i = sec->wallnum-1;
-        do
-        {
-            // if we have a level boundary somewhere in the sector,
-            // consider these walls as visportals
-            if (wall[sec->wallptr + i].nextsector < 0 && pr_buckets == 0)
-                doquery = 1;
-        }
-        while (--i >= 0);
-
-        i = sec->wallnum-1;
-        while (i >= 0)
-        {
-            if ((wall[sec->wallptr + i].nextsector >= 0) && (wallvisible(globalposx, globalposy, sec->wallptr + i)))
-            {
-                if ((prwalls[sec->wallptr + i]->mask.vertcount == 4) &&
-                    !(prwalls[sec->wallptr + i]->underover & 4) &&
-                    !(prwalls[sec->wallptr + i]->underover & 8))
-                {
-                    // early exit for closed sectors
-                    _prwall         *w;
-
-                    w = prwalls[sec->wallptr + i];
-
-                    if ((w->mask.buffer[0].y >= w->mask.buffer[3].y) &&
-                        (w->mask.buffer[1].y >= w->mask.buffer[2].y))
-                    {
-                        i--;
-                        continue;
-                    }
-                }
-
-                if ((wall[sec->wallptr + i].cstat & 48) == 16)
-                {
-                    int pic = wall[sec->wallptr + i].overpicnum;
-
-                    if (tilesiz[pic].x > 0 && tilesiz[pic].y > 0)
-                        localmaskwall[localmaskwallcnt++] = sec->wallptr + i;
-                }
-
-                if (!depth && (overridematerial & prprogrambits[PR_BIT_MIRROR_MAP].bit) &&
-                     wall[sec->wallptr + i].overpicnum == 560 &&
-                     wall[sec->wallptr + i].cstat & 32)
-                {
-                    mirrorlist[mirrorcount].plane = &prwalls[sec->wallptr + i]->mask;
-                    mirrorlist[mirrorcount].sectnum = sectorqueue[front];
-                    mirrorlist[mirrorcount].wallnum = sec->wallptr + i;
-                    mirrorcount++;
-                }
-
-                if (!(wall[sec->wallptr + i].cstat & 32)) {
-                    if (doquery && (!drawingstate[wall[sec->wallptr + i].nextsector]))
-                    {
-                        float pos[3], sqdist;
-                        int32_t oldoverridematerial;
-
-                        pos[0] = fglobalposy;
-                        pos[1] = fglobalposz * (-1.f/16.f);
-                        pos[2] = -fglobalposx;
-
-                        sqdist = prwalls[sec->wallptr + i]->mask.plane[0] * pos[0] +
-                                 prwalls[sec->wallptr + i]->mask.plane[1] * pos[1] +
-                                 prwalls[sec->wallptr + i]->mask.plane[2] * pos[2] +
-                                 prwalls[sec->wallptr + i]->mask.plane[3];
-
-                        // hack to avoid occlusion querying portals that are too close to the viewpoint
-                        // this is needed because of the near z-clipping plane;
-                        if (sqdist < 100 || rhiType == RHI_D3D12)
-                            queryid[sec->wallptr + i] = 0xFFFFFFFF;
-                        else {
-                            _prwall         *w;
-
-                            w = prwalls[sec->wallptr + i];
-
-                            glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-                            glDepthMask(GL_FALSE);
-
-                            glGenQueries(1, &queryid[sec->wallptr + i]);
-                            glBeginQuery(GL_SAMPLES_PASSED, queryid[sec->wallptr + i]);
-
-                            oldoverridematerial = overridematerial;
-                            overridematerial = 0;
-
-                            if ((w->underover & 4) && (w->underover & 1))
-                                polymer_drawplane(&w->wall);
-                            polymer_drawplane(&w->mask);
-                            if ((w->underover & 8) && (w->underover & 2))
-                                polymer_drawplane(&w->over);
-
-                            overridematerial = oldoverridematerial;
-
-                            glEndQuery(GL_SAMPLES_PASSED);
-
-                            glDepthMask(GL_TRUE);
-                            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-                        }
-                    } else
-                        queryid[sec->wallptr + i] = 0xFFFFFFFF;
-                }
-            }
-
-            i--;
+    for (int d = 0; d < MAXSECTORS; d++) {
+        sec = (usectorptr_t)&sector[d];
+		bool sectorVisibile = polymer_isSectorVisible(d);
+        if (!sectorVisibile) {
+            continue;
         }
 
-        // Cram as much CPU or GPU work as we can between queuing the
-        // occlusion queries and reaping them.
-        i = sec->wallnum-1;
-        do
-        {
-            if (wallvisible(globalposx, globalposy, sec->wallptr + i))
-                polymer_drawwall(sectorqueue[front], sec->wallptr + i);
-        }
-        while (--i >= 0);
-#ifdef YAX_ENABLE
-        if (rhiType == RHI_OPENGL) {
-            // queue ROR neighbors
-            if ((bunchnum = yax_getbunch(sectorqueue[front], YAX_FLOOR)) >= 0) {
+		polymer_pokesector(d);
+		polymer_drawsector(d, FALSE);
+		polymer_scansprites(d, localtsprite, &localspritesortcnt);
 
-                for (SECTORS_OF_BUNCH(bunchnum, YAX_CEILING, ns)) {
+		i = sec->wallnum - 1;
+		do
+		{
+			if (polymer_isWallVisible(sec->wallptr + i))
+				polymer_drawwall(d, sec->wallptr + i);
 
-                    if (ns >= 0 && !drawingstate[ns] &&
-                        polymer_planeinfrustum(&prsectors[ns]->ceil, frustum)) {
+			//sectorqueue[d] = wall[sec->wallptr + i].nextsector;
+			drawingstate[wall[sec->wallptr + i].nextsector] = 1;
 
-                        sectorqueue[back++] = ns;
-                        drawingstate[ns] = 1;
-                    }
-                }
-            }
-
-            if ((bunchnum = yax_getbunch(sectorqueue[front], YAX_CEILING)) >= 0) {
-
-                for (SECTORS_OF_BUNCH(bunchnum, YAX_FLOOR, ns)) {
-
-                    if (ns >= 0 && !drawingstate[ns] &&
-                        polymer_planeinfrustum(&prsectors[ns]->floor, frustum)) {
-
-                        sectorqueue[back++] = ns;
-                        drawingstate[ns] = 1;
-                    }
-                }
-            }
-        }
-#endif
-        i = sec->wallnum-1;
-        do
-        {
-            if ((queryid[sec->wallptr + i]) &&
-                (!drawingstate[wall[sec->wallptr + i].nextsector]))
-            {
-                // REAP
-                result = 0;
-                if (doquery && (queryid[sec->wallptr + i] != 0xFFFFFFFF))
-                {
-                    glGetQueryObjectiv(queryid[sec->wallptr + i],
-                                           GL_QUERY_RESULT,
-                                           &result);
-                    glDeleteQueries(1, &queryid[sec->wallptr + i]);
-                } else if (queryid[sec->wallptr + i] == 0xFFFFFFFF)
-                    result = 1;
-
-                queryid[sec->wallptr + i] = 0;
-
-                if (result || !doquery)
-                {
-                    sectorqueue[back++] = wall[sec->wallptr + i].nextsector;
-                    drawingstate[wall[sec->wallptr + i].nextsector] = 1;
-                }
-            } else if (queryid[sec->wallptr + i] &&
-                       queryid[sec->wallptr + i] != 0xFFFFFFFF)
-            {
-                glDeleteQueries(1, &queryid[sec->wallptr + i]);
-                queryid[sec->wallptr + i] = 0;
-            }
-        }
-        while (--i >= 0);
-
-        front++;
+			if (!depth && (overridematerial & prprogrambits[PR_BIT_MIRROR_MAP].bit) &&
+				wall[sec->wallptr + i].overpicnum == 560 &&
+				wall[sec->wallptr + i].cstat & 32)
+			{
+				mirrorlist[mirrorcount].plane = &prwalls[sec->wallptr + i]->mask;
+				mirrorlist[mirrorcount].sectnum = d;
+				mirrorlist[mirrorcount].wallnum = sec->wallptr + i;
+				mirrorcount++;
+			}
+		} while (--i >= 0);
     }
+
+//	while (front != back)
+//	{
+//		sec = (usectorptr_t)&sector[sectorqueue[front]];
+//        bool sectorVisibile = polymer_isSectorVisible(sectorqueue[front]);
+//
+//        if (sectorVisibile) {
+//            polymer_pokesector(sectorqueue[front]);
+//            polymer_drawsector(sectorqueue[front], FALSE);
+//            polymer_scansprites(sectorqueue[front], localtsprite, &localspritesortcnt);
+//        }
+//
+//		doquery = 0;
+//
+//		i = sec->wallnum - 1;
+//		do
+//		{
+//			// if we have a level boundary somewhere in the sector,
+//			// consider these walls as visportals
+//			if (wall[sec->wallptr + i].nextsector < 0 && pr_buckets == 0)
+//				doquery = 1;
+//		} while (--i >= 0);
+//
+//		i = sec->wallnum - 1;
+//		while (i >= 0)
+//		{
+//			if ((wall[sec->wallptr + i].nextsector >= 0))
+//			{
+//				if ((prwalls[sec->wallptr + i]->mask.vertcount == 4) &&
+//					!(prwalls[sec->wallptr + i]->underover & 4) &&
+//					!(prwalls[sec->wallptr + i]->underover & 8))
+//				{
+//					// early exit for closed sectors
+//					_prwall* w;
+//
+//					w = prwalls[sec->wallptr + i];
+//
+//					if ((w->mask.buffer[0].y >= w->mask.buffer[3].y) &&
+//						(w->mask.buffer[1].y >= w->mask.buffer[2].y))
+//					{
+//						i--;
+//						continue;
+//					}
+//				}
+//
+//				if ((wall[sec->wallptr + i].cstat & 48) == 16)
+//				{
+//					int pic = wall[sec->wallptr + i].overpicnum;
+//
+//					if (tilesiz[pic].x > 0 && tilesiz[pic].y > 0)
+//						localmaskwall[localmaskwallcnt++] = sec->wallptr + i;
+//				}
+//
+//				if (!depth && (overridematerial & prprogrambits[PR_BIT_MIRROR_MAP].bit) &&
+//					wall[sec->wallptr + i].overpicnum == 560 &&
+//					wall[sec->wallptr + i].cstat & 32)
+//				{
+//					mirrorlist[mirrorcount].plane = &prwalls[sec->wallptr + i]->mask;
+//					mirrorlist[mirrorcount].sectnum = sectorqueue[front];
+//					mirrorlist[mirrorcount].wallnum = sec->wallptr + i;
+//					mirrorcount++;
+//				}
+//
+//				if (sectorVisibile) {
+//					queryid[sec->wallptr + i] = 0xFFFFFFFF;
+//				}
+//			}
+//
+//			i--;
+//		}
+//
+//		// Cram as much CPU or GPU work as we can between queuing the
+//		// occlusion queries and reaping them.
+//		i = sec->wallnum - 1;
+//		do
+//		{
+//			if (polymer_isWallVisible(sec->wallptr + i))
+//				polymer_drawwall(sectorqueue[front], sec->wallptr + i);
+//		} while (--i >= 0);
+//#ifdef YAX_ENABLE
+//		if (rhiType == RHI_OPENGL) {
+//			// queue ROR neighbors
+//			if ((bunchnum = yax_getbunch(sectorqueue[front], YAX_FLOOR)) >= 0) {
+//
+//				for (SECTORS_OF_BUNCH(bunchnum, YAX_CEILING, ns)) {
+//
+//					if (ns >= 0 && !drawingstate[ns] &&
+//						polymer_planeinfrustum(&prsectors[ns]->ceil, frustum)) {
+//
+//						sectorqueue[back++] = ns;
+//						drawingstate[ns] = 1;
+//					}
+//				}
+//			}
+//
+//			if ((bunchnum = yax_getbunch(sectorqueue[front], YAX_CEILING)) >= 0) {
+//
+//				for (SECTORS_OF_BUNCH(bunchnum, YAX_FLOOR, ns)) {
+//
+//					if (ns >= 0 && !drawingstate[ns] &&
+//						polymer_planeinfrustum(&prsectors[ns]->floor, frustum)) {
+//
+//						sectorqueue[back++] = ns;
+//						drawingstate[ns] = 1;
+//					}
+//				}
+//			}
+//		}
+//#endif
+//		i = sec->wallnum - 1;
+//		do
+//		{
+//			if ((queryid[sec->wallptr + i]) &&
+//				(!drawingstate[wall[sec->wallptr + i].nextsector]))
+//			{
+//				// REAP
+//				result = 0;
+//				if (doquery && (queryid[sec->wallptr + i] != 0xFFFFFFFF))
+//				{
+//					glGetQueryObjectiv(queryid[sec->wallptr + i],
+//						GL_QUERY_RESULT,
+//						&result);
+//					glDeleteQueries(1, &queryid[sec->wallptr + i]);
+//				}
+//				else if (queryid[sec->wallptr + i] == 0xFFFFFFFF)
+//					result = 1;
+//
+//				queryid[sec->wallptr + i] = 0;
+//
+//				if (result || !doquery)
+//				{
+//					sectorqueue[back++] = wall[sec->wallptr + i].nextsector;
+//					drawingstate[wall[sec->wallptr + i].nextsector] = 1;
+//				}
+//			}
+//			else if (queryid[sec->wallptr + i] &&
+//				queryid[sec->wallptr + i] != 0xFFFFFFFF)
+//			{
+//				glDeleteQueries(1, &queryid[sec->wallptr + i]);
+//				queryid[sec->wallptr + i] = 0;
+//			}
+//		} while (--i >= 0);
+//
+//		front++;
+//	}
+
 
 	if (rhiType == RHI_OPENGL) {
 		polymer_emptybuckets();
@@ -6263,154 +6260,154 @@ static void         polymer_processspotlight(_prlight* light)
 
 static inline void  polymer_culllight(int16_t lighti)
 {
-    _prlight*       light = &prlights[lighti];
-    int32_t         front = 0;
-    int32_t         back = 1;
-    int32_t         i;
-    int32_t         j;
-    int32_t         zdiff;
-    int32_t         checkror;
-    int16_t         bunchnum;
-    int16_t         ns;
-    _prsector       *s;
-    _prwall         *w;
-    sectortype      *sec;
-
-    Bmemset(drawingstate, 0, sizeof(int16_t) * numsectors);
-    drawingstate[light->sector] = 1;
-
-    sectorqueue[0] = light->sector;
-
-    do
-    {
-        s = prsectors[sectorqueue[front]];
-        sec = &sector[sectorqueue[front]];
-
-        polymer_pokesector(sectorqueue[front]);
-
-        checkror = FALSE;
-
-        zdiff = light->z - s->floorz;
-        if (zdiff < 0)
-            zdiff = -zdiff;
-        zdiff >>= 4;
-
-        if (!light->radius && !(sec->floorstat & 1)) {
-            if (zdiff < light->range) {
-                polymer_addplanelight(&s->floor, lighti);
-                checkror = TRUE;
-            }
-        } else if (polymer_planeinlight(&s->floor, light)) {
-            polymer_addplanelight(&s->floor, lighti);
-            checkror = TRUE;
-        }
-
-#ifdef YAX_ENABLE
-        // queue ROR neighbors
-        if (checkror &&
-            (bunchnum = yax_getbunch(sectorqueue[front], YAX_FLOOR)) >= 0) {
-
-            for (SECTORS_OF_BUNCH(bunchnum, YAX_CEILING, ns)) {
-
-                if (ns >= 0 && !drawingstate[ns] &&
-                    polymer_planeinlight(&prsectors[ns]->ceil, light)) {
-
-                    sectorqueue[back++] = ns;
-                    drawingstate[ns] = 1;
-                }
-            }
-        }
-#endif
-        checkror = FALSE;
-
-        zdiff = light->z - s->ceilingz;
-        if (zdiff < 0)
-            zdiff = -zdiff;
-        zdiff >>= 4;
-
-        if (!light->radius && !(sec->ceilingstat & 1)) {
-            if (zdiff < light->range) {
-                polymer_addplanelight(&s->ceil, lighti);
-                checkror = TRUE;
-            }
-        } else if (polymer_planeinlight(&s->ceil, light)) {
-            polymer_addplanelight(&s->ceil, lighti);
-            checkror = TRUE;
-        }
-
-#ifdef YAX_ENABLE
-        // queue ROR neighbors
-        if (checkror &&
-            (bunchnum = yax_getbunch(sectorqueue[front], YAX_CEILING)) >= 0) {
-
-            for (SECTORS_OF_BUNCH(bunchnum, YAX_FLOOR, ns)) {
-
-                if (ns >= 0 && !drawingstate[ns] &&
-                    polymer_planeinlight(&prsectors[ns]->floor, light)) {
-
-                    sectorqueue[back++] = ns;
-                    drawingstate[ns] = 1;
-                }
-            }
-        }
-#endif
-        i = 0;
-        while (i < sec->wallnum)
-        {
-            w = prwalls[sec->wallptr + i];
-
-            j = 0;
-
-            if (polymer_planeinlight(&w->wall, light)) {
-                polymer_addplanelight(&w->wall, lighti);
-                j++;
-            }
-
-            if (polymer_planeinlight(&w->over, light)) {
-                polymer_addplanelight(&w->over, lighti);
-                j++;
-            }
-
-            // assume the light hits the middle section if it hits the top and bottom
-            if (wallvisible(light->x, light->y, sec->wallptr + i) &&
-                (j == 2 || polymer_planeinlight(&w->mask, light))) {
-                if ((w->mask.vertcount == 4) &&
-                    (w->mask.buffer[0].y >= w->mask.buffer[3].y) &&
-                    (w->mask.buffer[1].y >= w->mask.buffer[2].y))
-                {
-                    i++;
-                    continue;
-                }
-
-                polymer_addplanelight(&w->mask, lighti);
-
-                if ((wall[sec->wallptr + i].nextsector >= 0) &&
-                    (!drawingstate[wall[sec->wallptr + i].nextsector])) {
-                    drawingstate[wall[sec->wallptr + i].nextsector] = 1;
-                    sectorqueue[back] = wall[sec->wallptr + i].nextsector;
-                    back++;
-                }
-            }
-
-            i++;
-        }
-        front++;
-    }
-    while (front != back);
-
-    i = MAXSPRITES-1;
-
-    do
-    {
-        _prsprite *s = prsprites[i];
-
-        if ((sprite[i].cstat & 48) == 0 || s == NULL || sprite[i].statnum == MAXSTATUS || sprite[i].sectnum == MAXSECTORS)
-            continue;
-
-        if (polymer_planeinlight(&s->plane, light))
-            polymer_addplanelight(&s->plane, lighti);
-    }
-    while (i--);
+//    _prlight*       light = &prlights[lighti];
+//    int32_t         front = 0;
+//    int32_t         back = 1;
+//    int32_t         i;
+//    int32_t         j;
+//    int32_t         zdiff;
+//    int32_t         checkror;
+//    int16_t         bunchnum;
+//    int16_t         ns;
+//    _prsector       *s;
+//    _prwall         *w;
+//    sectortype      *sec;
+//
+//    Bmemset(drawingstate, 0, sizeof(int16_t) * numsectors);
+//    drawingstate[light->sector] = 1;
+//
+//    sectorqueue[0] = light->sector;
+//
+//    do
+//    {
+//        s = prsectors[sectorqueue[front]];
+//        sec = &sector[sectorqueue[front]];
+//
+//        polymer_pokesector(sectorqueue[front]);
+//
+//        checkror = FALSE;
+//
+//        zdiff = light->z - s->floorz;
+//        if (zdiff < 0)
+//            zdiff = -zdiff;
+//        zdiff >>= 4;
+//
+//        if (!light->radius && !(sec->floorstat & 1)) {
+//            if (zdiff < light->range) {
+//                polymer_addplanelight(&s->floor, lighti);
+//                checkror = TRUE;
+//            }
+//        } else if (polymer_planeinlight(&s->floor, light)) {
+//            polymer_addplanelight(&s->floor, lighti);
+//            checkror = TRUE;
+//        }
+//
+//#ifdef YAX_ENABLE
+//        // queue ROR neighbors
+//        if (checkror &&
+//            (bunchnum = yax_getbunch(sectorqueue[front], YAX_FLOOR)) >= 0) {
+//
+//            for (SECTORS_OF_BUNCH(bunchnum, YAX_CEILING, ns)) {
+//
+//                if (ns >= 0 && !drawingstate[ns] &&
+//                    polymer_planeinlight(&prsectors[ns]->ceil, light)) {
+//
+//                    sectorqueue[back++] = ns;
+//                    drawingstate[ns] = 1;
+//                }
+//            }
+//        }
+//#endif
+//        checkror = FALSE;
+//
+//        zdiff = light->z - s->ceilingz;
+//        if (zdiff < 0)
+//            zdiff = -zdiff;
+//        zdiff >>= 4;
+//
+//        if (!light->radius && !(sec->ceilingstat & 1)) {
+//            if (zdiff < light->range) {
+//                polymer_addplanelight(&s->ceil, lighti);
+//                checkror = TRUE;
+//            }
+//        } else if (polymer_planeinlight(&s->ceil, light)) {
+//            polymer_addplanelight(&s->ceil, lighti);
+//            checkror = TRUE;
+//        }
+//
+//#ifdef YAX_ENABLE
+//        // queue ROR neighbors
+//        if (checkror &&
+//            (bunchnum = yax_getbunch(sectorqueue[front], YAX_CEILING)) >= 0) {
+//
+//            for (SECTORS_OF_BUNCH(bunchnum, YAX_FLOOR, ns)) {
+//
+//                if (ns >= 0 && !drawingstate[ns] &&
+//                    polymer_planeinlight(&prsectors[ns]->floor, light)) {
+//
+//                    sectorqueue[back++] = ns;
+//                    drawingstate[ns] = 1;
+//                }
+//            }
+//        }
+//#endif
+//        i = 0;
+//        while (i < sec->wallnum)
+//        {
+//            w = prwalls[sec->wallptr + i];
+//
+//            j = 0;
+//
+//            if (polymer_planeinlight(&w->wall, light)) {
+//                polymer_addplanelight(&w->wall, lighti);
+//                j++;
+//            }
+//
+//            if (polymer_planeinlight(&w->over, light)) {
+//                polymer_addplanelight(&w->over, lighti);
+//                j++;
+//            }
+//
+//            // assume the light hits the middle section if it hits the top and bottom
+//            if (wallvisible(light->x, light->y, sec->wallptr + i) &&
+//                (j == 2 || polymer_planeinlight(&w->mask, light))) {
+//                if ((w->mask.vertcount == 4) &&
+//                    (w->mask.buffer[0].y >= w->mask.buffer[3].y) &&
+//                    (w->mask.buffer[1].y >= w->mask.buffer[2].y))
+//                {
+//                    i++;
+//                    continue;
+//                }
+//
+//                polymer_addplanelight(&w->mask, lighti);
+//
+//                if ((wall[sec->wallptr + i].nextsector >= 0) &&
+//                    (!drawingstate[wall[sec->wallptr + i].nextsector])) {
+//                    drawingstate[wall[sec->wallptr + i].nextsector] = 1;
+//                    sectorqueue[back] = wall[sec->wallptr + i].nextsector;
+//                    back++;
+//                }
+//            }
+//
+//            i++;
+//        }
+//        front++;
+//    }
+//    while (front != back);
+//
+//    i = MAXSPRITES-1;
+//
+//    do
+//    {
+//        _prsprite *s = prsprites[i];
+//
+//        if ((sprite[i].cstat & 48) == 0 || s == NULL || sprite[i].statnum == MAXSTATUS || sprite[i].sectnum == MAXSECTORS)
+//            continue;
+//
+//        if (polymer_planeinlight(&s->plane, light))
+//            polymer_addplanelight(&s->plane, lighti);
+//    }
+//    while (i--);
 }
 
 static void         polymer_prepareshadows(void)

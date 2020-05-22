@@ -45,6 +45,12 @@ extern ProjectionMatrixState_t projectionMatrixState;
 
 extern wallspriteinfo_t wsprinfo[MAXSPRITES];
 
+void polymost_resetgather(void);
+void polymost_gatherrooms(void);
+bool polymer_isSpriteVisible(int32_t spritenum);
+bool polymer_isSectorVisible(int32_t sectnum);
+bool polymer_isWallVisible(int32_t wallnum);
+
 struct glfiltermodes {
     const char *name;
     int32_t min,mag;
@@ -130,6 +136,8 @@ extern int32_t r_npotwallmode;
 extern int32_t polymostcenterhoriz;
 
 extern int16_t globalpicnum;
+extern int32_t globalsectornum;
+extern int32_t globalwallnum;
 
 // Compare with polymer_eligible_for_artmap()
 static FORCE_INLINE int32_t eligible_for_tileshades(int32_t const picnum, int32_t const pal)

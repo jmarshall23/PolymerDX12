@@ -38,13 +38,19 @@ static int32_t yax_holencf[2];
 static int32_t yax_drawcf = -1;
 #endif
 
+int32_t occlusionCullingTime = 0;
+int32_t sectorOcclusionInfo[MAXSECTORS];
+int32_t spriteOcclusionInfo[MAXSPRITES];
+int32_t wallOcclusionInfo[MAXWALLS];
+bool polymostOcclusionGatherOnly = false;
+
 extern tr_renderer* m_renderer;
 
 static float dxb1[MAXWALLSB], dxb2[MAXWALLSB];
 
 //POGOTODO: the SCISDIST could be set to 0 now to allow close objects to render properly,
 //          but there's a nasty rendering bug that needs to be dug into when setting SCISDIST lower than 1
-#define SCISDIST 1.f  //close plane clipping distance
+#define SCISDIST 1  //close plane clipping distance
 
 #define SOFTROTMAT 0
 
@@ -225,6 +231,18 @@ static float polymost1RotMatrix[16] = { 1.f, 0.f, 0.f, 0.f,
                                         0.f, 0.f, 0.f, 1.f };
 static GLint polymost1ShadeInterpolateLoc = -1;
 static float polymost1ShadeInterpolate = 1.f;
+
+static inline void polymerOcclusionMarkSector(int32_t sectnum) {
+    sectorOcclusionInfo[sectnum] = occlusionCullingTime;
+}
+
+static inline void polymerOcclusionMarkSprite(int32_t sectnum) {
+	spriteOcclusionInfo[sectnum] = occlusionCullingTime;
+}
+
+static inline void polymerOcclusionMarkWall(int32_t wallnum) {
+    wallOcclusionInfo[wallnum] = occlusionCullingTime;
+}
 
 static inline float float_trans(uint32_t maskprops, uint8_t blend)
 {
@@ -3233,7 +3251,9 @@ static void polymost_identityrotmat(void)
             0.f, 0.f, 0.f, 1.f,
         };
         Bmemcpy(polymost1RotMatrix, matrix, sizeof(matrix));
-        glUniformMatrix4fv(polymost1RotMatrixLoc, 1, false, polymost1RotMatrix);
+        if (!polymostOcclusionGatherOnly) {
+            glUniformMatrix4fv(polymost1RotMatrixLoc, 1, false, polymost1RotMatrix);
+        }
     }
 }
 
@@ -4092,8 +4112,11 @@ static void polymost_domost(float x0, float y0, float x1, float y1, float y0top 
 {
     int const dir = (x0 < x1);
 
-    polymost_outputGLDebugMessage(3, "polymost_domost(x0:%f, y0:%f, x1:%f, y1:%f, y0top:%f, y0bot:%f, y1top:%f, y1bot:%f)",
-                                  x0, y0, x1, y1, y0top, y0bot, y1top, y1bot);
+    if (!polymostOcclusionGatherOnly)
+    {
+        polymost_outputGLDebugMessage(3, "polymost_domost(x0:%f, y0:%f, x1:%f, y1:%f, y0top:%f, y0bot:%f, y1top:%f, y1bot:%f)",
+            x0, y0, x1, y1, y0top, y0bot, y1top, y1bot);
+    }
 
     y0top -= DOMOST_OFFSET;
     y1top -= DOMOST_OFFSET;
@@ -4302,8 +4325,14 @@ skip: ;
 
                         int n = 4;
                         polymost_clipmost(dpxy, n, x0, x1, y0top, y0bot, y1top, y1bot);
+						if (polymostOcclusionGatherOnly) {
+                            if (globalwallnum != -1) {
+                                polymerOcclusionMarkWall(globalwallnum);
+                            }
+							polymerOcclusionMarkSector(globalsectornum);
+						}
 #ifdef YAX_ENABLE
-                        if (g_nodraw)
+                        else if (g_nodraw)
                         {
                             if (yax_drawcf != -1)
                                 yax_holecf[yax_drawcf][yax_holencf[yax_drawcf]++] = { dx0, dx1, vsp[i].cy[0], vsp[i].cy[1], n0.y, n1.y };
@@ -4327,8 +4356,14 @@ skip: ;
 
                         int n = 3;
                         polymost_clipmost(dpxy, n, x0, x1, y0top, y0bot, y1top, y1bot);
+                        if (polymostOcclusionGatherOnly) {
+							if (globalwallnum != -1) {
+								polymerOcclusionMarkWall(globalwallnum);
+							}
+                            polymerOcclusionMarkSector(globalsectornum);
+                        }
 #ifdef YAX_ENABLE
-                        if (g_nodraw)
+                        else if (g_nodraw)
                         {
                             if (yax_drawcf != -1)
                                 yax_holecf[yax_drawcf][yax_holencf[yax_drawcf]++] = { dx0, dx1, vsp[i].cy[0], vsp[i].cy[1], n0.y, vsp[i].cy[1] };
@@ -4351,8 +4386,14 @@ skip: ;
 
                         int n = 3;
                         polymost_clipmost(dpxy, n, x0, x1, y0top, y0bot, y1top, y1bot);
+						if (polymostOcclusionGatherOnly) {
+							if (globalwallnum != -1) {
+								polymerOcclusionMarkWall(globalwallnum);
+							}
+							polymerOcclusionMarkSector(globalsectornum);
+						}
 #ifdef YAX_ENABLE
-                        if (g_nodraw)
+                        else if (g_nodraw)
                         {
                             if (yax_drawcf != -1)
                                 yax_holecf[yax_drawcf][yax_holencf[yax_drawcf]++] = { dx0, dx1, vsp[i].cy[0], vsp[i].cy[1], vsp[i].cy[0], n1.y };
@@ -4376,8 +4417,14 @@ skip: ;
 
                         int n = 4;
                         polymost_clipmost(dpxy, n, x0, x1, y0top, y0bot, y1top, y1bot);
+						if (polymostOcclusionGatherOnly) {
+							if (globalwallnum != -1) {
+								polymerOcclusionMarkWall(globalwallnum);
+							}
+							polymerOcclusionMarkSector(globalsectornum);
+						}
 #ifdef YAX_ENABLE
-                        if (g_nodraw)
+                        else if (g_nodraw)
                         {
                             if (yax_drawcf != -1)
                                 yax_holecf[yax_drawcf][yax_holencf[yax_drawcf]++] = { dx0, dx1, vsp[i].cy[0], vsp[i].cy[1], vsp[i].fy[0], vsp[i].fy[1] };
@@ -4408,8 +4455,14 @@ skip: ;
 
                     int n = 4;
                     polymost_clipmost(dpxy, n, x0, x1, y0top, y0bot, y1top, y1bot);
+					if (polymostOcclusionGatherOnly) {
+						if (globalwallnum != -1) {
+							polymerOcclusionMarkWall(globalwallnum);
+						}
+						polymerOcclusionMarkSector(globalsectornum);
+					}
 #ifdef YAX_ENABLE
-                    if (g_nodraw)
+                    else if (g_nodraw)
                     {
                         if (yax_drawcf != -1)
                             yax_holecf[yax_drawcf][yax_holencf[yax_drawcf]++] = { dx0, dx1, n0.y, n1.y, vsp[i].fy[0], vsp[i].fy[1] };
@@ -4433,8 +4486,14 @@ skip: ;
 
                     int n = 3;
                     polymost_clipmost(dpxy, n, x0, x1, y0top, y0bot, y1top, y1bot);
+					if (polymostOcclusionGatherOnly) {
+						if (globalwallnum != -1) {
+							polymerOcclusionMarkWall(globalwallnum);
+						}
+						polymerOcclusionMarkSector(globalsectornum);
+					}
 #ifdef YAX_ENABLE
-                    if (g_nodraw)
+                    else if (g_nodraw)
                     {
                         if (yax_drawcf != -1)
                             yax_holecf[yax_drawcf][yax_holencf[yax_drawcf]++] = { dx0, dx1, n0.y, vsp[i].fy[1], vsp[i].fy[0], vsp[i].fy[1] };
@@ -4457,8 +4516,14 @@ skip: ;
 
                     int n = 3;
                     polymost_clipmost(dpxy, n, x0, x1, y0top, y0bot, y1top, y1bot);
+					if (polymostOcclusionGatherOnly) {
+						if (globalwallnum != -1) {
+							polymerOcclusionMarkWall(globalwallnum);
+						}
+						polymerOcclusionMarkSector(globalsectornum);
+					}
 #ifdef YAX_ENABLE
-                    if (g_nodraw)
+                    else if (g_nodraw)
                     {
                         if (yax_drawcf != -1)
                             yax_holecf[yax_drawcf][yax_holencf[yax_drawcf]++] = { dx0, dx1, vsp[i].fy[0], n1.y, vsp[i].fy[0], vsp[i].fy[1] };
@@ -4480,8 +4545,14 @@ skip: ;
 
                     int n = 4;
                     polymost_clipmost(dpxy, n, x0, x1, y0top, y0bot, y1top, y1bot);
+					if (polymostOcclusionGatherOnly) {
+						if (globalwallnum != -1) {
+							polymerOcclusionMarkWall(globalwallnum);
+						}
+						polymerOcclusionMarkSector(globalsectornum);
+					}
 #ifdef YAX_ENABLE
-                    if (g_nodraw)
+                    else if (g_nodraw)
                     {
                         if (yax_drawcf != -1)
                             yax_holecf[yax_drawcf][yax_holencf[yax_drawcf]++] = { dx0, dx1, vsp[i].cy[0], vsp[i].cy[1], vsp[i].fy[0], vsp[i].fy[1] };
@@ -5163,23 +5234,35 @@ static void polymost_internal_nonparallaxed(vec2f_t n0, vec2f_t n1, float ryp0, 
         if (globalposz > getflorzofslope(sectnum, globalposx, globalposy))
             domostpolymethod = DAMETH_BACKFACECULL; //Back-face culling
 
-        if (domostpolymethod & DAMETH_MASKPROPS)
-            glEnable(GL_BLEND);
 
-        polymost_domost(x0, y0, x1, y1); //flor
+        if (polymostOcclusionGatherOnly) {
+            polymerOcclusionMarkSector(globalsectornum);
+        }
+        else {
+			if (domostpolymethod & DAMETH_MASKPROPS)
+				glEnable(GL_BLEND);
+
+            polymost_domost(x0, y0, x1, y1); //flor
+        }
     }
     else
     {
         if (globalposz < getceilzofslope(sectnum, globalposx, globalposy))
             domostpolymethod = DAMETH_BACKFACECULL; //Back-face culling
 
-        if (domostpolymethod & DAMETH_MASKPROPS)
-            glEnable(GL_BLEND);
 
-        polymost_domost(x1, y1, x0, y0); //ceil
+
+		if (polymostOcclusionGatherOnly) {
+			if (domostpolymethod & DAMETH_MASKPROPS)
+				glEnable(GL_BLEND);
+			polymerOcclusionMarkSector(globalsectornum);
+		}
+        else {
+            polymost_domost(x1, y1, x0, y0); //ceil
+        }
     }
 
-    if (domostpolymethod & DAMETH_MASKPROPS)
+    if (!polymostOcclusionGatherOnly && domostpolymethod & DAMETH_MASKPROPS)
         glDisable(GL_BLEND);
 
     domostpolymethod = DAMETH_NOMASK;
@@ -5613,7 +5696,8 @@ static void polymost_drawalls(int32_t const bunch)
         yax_holencf[YAX_FLOOR] = 0;
         yax_drawcf = YAX_FLOOR;
 #endif
-
+        globalwallnum = wallnum;
+        globalsectornum = sectnum;
         globalpicnum = sec->floorpicnum;
         globalshade = sec->floorshade;
         globalpal = sec->floorpal;
@@ -6646,6 +6730,8 @@ static void polymost_drawalls(int32_t const bunch)
             if ((!(gotsector[nextsectnum>>3]&pow2char[nextsectnum&7])) && testvisiblemost(x0,x1))
                 polymost_scansector(nextsectnum);
     }
+
+    globalwallnum = -1;
 }
 
 static int32_t polymost_bunchfront(const int32_t b1, const int32_t b2)
@@ -6917,31 +7003,67 @@ static void polymost_initmosts(const float * px, const float * py, int const n)
     viewportNodeCount = vcnt;
 }
 
+// Polymost for Occlusion Culling.
+void polymost_resetgather(void)
+{
+    occlusionCullingTime = 0;
+    memset(sectorOcclusionInfo, 0, sizeof(sectorOcclusionInfo));
+    memset(spriteOcclusionInfo, 0, sizeof(spriteOcclusionInfo));
+    memset(wallOcclusionInfo, 0, sizeof(wallOcclusionInfo));
+    polymostOcclusionGatherOnly = false;
+}
+
+void polymost_gatherrooms(void)
+{
+    occlusionCullingTime++;
+    float _oldviewingrange = viewingrange;
+    viewingrange = 65536;
+    polymostOcclusionGatherOnly = true;
+    polymost_drawrooms();
+    polymostOcclusionGatherOnly = false;
+    viewingrange = _oldviewingrange;
+}
+
+bool polymer_isSectorVisible(int32_t sectnum) {
+    return sectorOcclusionInfo[sectnum] == occlusionCullingTime;
+}
+
+bool polymer_isSpriteVisible(int32_t spritenum) {
+	return spriteOcclusionInfo[spritenum] == occlusionCullingTime;
+}
+
+bool polymer_isWallVisible(int32_t wallnum) {
+    return wallOcclusionInfo[wallnum] == occlusionCullingTime;
+}
+
 void polymost_drawrooms()
 {
     if (videoGetRenderMode() == REND_CLASSIC) return;
 
     polymost_outputGLDebugMessage(3, "polymost_drawrooms()");
-
+    
     videoBeginDrawing();
     frameoffset = frameplace + windowxy1.y*bytesperline + windowxy1.x;
 
+    if (!polymostOcclusionGatherOnly)
+    {
 #ifdef YAX_ENABLE
-    if (numyaxbunches==0)
+        if (numyaxbunches == 0)
 #endif
-    if (editstatus)
-        glClear(GL_COLOR_BUFFER_BIT);
+            if (editstatus)
+                glClear(GL_COLOR_BUFFER_BIT);
 
 #ifdef YAX_ENABLE
-    if (yax_polymostclearzbuffer)
+        if (yax_polymostclearzbuffer)
 #endif
-    glClear(GL_DEPTH_BUFFER_BIT);
+            glClear(GL_DEPTH_BUFFER_BIT);
 
-    glDisable(GL_BLEND);
-    glDisable(GL_ALPHA_TEST);
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_ALWAYS); //NEVER,LESS,(,L)EQUAL,GREATER,(NOT,G)EQUAL,ALWAYS
-//        glDepthRange(0.0, 1.0); //<- this is more widely supported than glPolygonOffset
+        glDisable(GL_BLEND);
+        glDisable(GL_ALPHA_TEST);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_ALWAYS); //NEVER,LESS,(,L)EQUAL,GREATER,(NOT,G)EQUAL,ALWAYS
+    //        glDepthRange(0.0, 1.0); //<- this is more widely supported than glPolygonOffset
+    }
 
     gvrcorrection = viewingrange*(1.f/65536.f);
     if (glprojectionhacks == 2)
@@ -6972,8 +7094,10 @@ void polymost_drawrooms()
 
     gvisibility = ((float)globalvisibility)*FOGSCALE;
 
-
-    polymost_shadeInterpolate(r_shadeinterpolate);
+    if (!polymostOcclusionGatherOnly)
+    {
+        polymost_shadeInterpolate(r_shadeinterpolate);
+    }
 
     //global cos/sin height angle
     if (r_yshearing)
@@ -6992,7 +7116,10 @@ void polymost_drawrooms()
 
     ghoriz = (float)(ydimen>>1);
 
-    resizeglcheck();
+    if (!polymostOcclusionGatherOnly)
+    {
+        resizeglcheck();
+    }
     float const ratio = 1.f/get_projhack_ratio();
 
     //global cos/sin tilt angle
@@ -7192,7 +7319,10 @@ void polymost_drawrooms()
         bunchlast[closest] = bunchlast[numbunches];
     }
 
-    glDepthFunc(GL_LEQUAL); //NEVER,LESS,(,L)EQUAL,GREATER,(NOT,G)EQUAL,ALWAYS
+    if (!polymostOcclusionGatherOnly)
+    {
+        glDepthFunc(GL_LEQUAL); //NEVER,LESS,(,L)EQUAL,GREATER,(NOT,G)EQUAL,ALWAYS
+    }
 //        glDepthRange(0.0, 1.0); //<- this is more widely supported than glPolygonOffset
     polymost_identityrotmat();
 
@@ -8113,7 +8243,9 @@ void polymost_drawsprite(int32_t snum)
     if (tspr->cstat & 2)
         method = DAMETH_CLAMPED | ((tspr->cstat & 512) ? DAMETH_TRANS2 : DAMETH_TRANS1);
 
-    handle_blend(!!(tspr->cstat & 2), tspr->blend, !!(tspr->cstat & 512));
+    if (!polymostOcclusionGatherOnly) {
+        handle_blend(!!(tspr->cstat & 2), tspr->blend, !!(tspr->cstat & 512));
+    }
 
     drawpoly_alpha = spriteext[spritenum].alpha;
     drawpoly_blend = tspr->blend;
@@ -8310,7 +8442,13 @@ void polymost_drawsprite(int32_t snum)
                 psearchstat = 3;
                 doeditorcheck = 1;
             }
-            polymost_drawpoly(pxy, 4, method);
+
+            if (polymostOcclusionGatherOnly) {
+                polymerOcclusionMarkSprite(snum);
+            }
+            else {
+                polymost_drawpoly(pxy, 4, method);
+            }
             doeditorcheck = 0;
 
             drawpoly_srepeat = 0;
@@ -8531,7 +8669,12 @@ void polymost_drawsprite(int32_t snum)
                 psearchstat = 3;
                 doeditorcheck = 1;
             }
-            polymost_drawpoly(pxy, 4, method);
+			if (polymostOcclusionGatherOnly) {
+				polymerOcclusionMarkSprite(snum);
+			}
+            else {
+                polymost_drawpoly(pxy, 4, method);
+            }
             doeditorcheck = 0;
 
             drawpoly_srepeat = 0;
@@ -8773,7 +8916,12 @@ void polymost_drawsprite(int32_t snum)
                     psearchstat = 3;
                     doeditorcheck = 1;
                 }
-                polymost_drawpoly(pxy2, npoints, method);
+                if (polymostOcclusionGatherOnly) {
+                    polymerOcclusionMarkSprite(snum);
+                }
+                else {
+                    polymost_drawpoly(pxy2, npoints, method);
+                }
                 doeditorcheck = 0;
 
                 drawpoly_srepeat = 0;
