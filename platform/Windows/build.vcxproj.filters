@@ -451,4 +451,9 @@
       <Filter>Source Files</Filter>
     </MASM>
   </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="..\..\renderprogs\d3d12\buildshader.hlsl">
+      <Filter>Source Files</Filter>
+    </CustomBuild>
+  </ItemGroup>
 </Project>

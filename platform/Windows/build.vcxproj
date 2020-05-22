@@ -636,6 +636,15 @@
       <TreatWarningsAsErrors Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|Win32'">true</TreatWarningsAsErrors>
     </MASM>
   </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="..\..\renderprogs\d3d12\buildshader.hlsl">
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">../../spirv/buildspv.bat</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='ReleaseVK|x64'">../../renderprogs/spirv/buildshader_p.spv</Outputs>
+      <Command Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">../../spirv/buildspv.bat</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='DebugVK|x64'">../../renderprogs/spirv/buildshader_p.spv</Outputs>
+    </CustomBuild>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
