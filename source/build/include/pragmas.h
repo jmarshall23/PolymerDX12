@@ -105,7 +105,7 @@ EDUKE32_GENERATE_PRAGMAS EDUKE32_SCALER_PRAGMA(32)
 
 static inline int32_t scale(int32_t eax, int32_t edx, int32_t ecx)
 {
-    return dw(tabledivide64(qw(eax) * edx, ecx));
+    return dw((qw(eax) * qw(edx)) / qw(ecx));
 }
 
 static FORCE_INLINE int32_t scaleadd(int32_t eax, int32_t edx, int32_t addend, int32_t ecx)
