@@ -85,6 +85,9 @@ float4x4 skyMatrix;
 
 extern uint32_t frameIdx;
 
+float4x4 normalProjectionMatrix;
+float4x4 biasedProjectionMatrix;
+
 //Vertex board_vertexes[POLYMER_DX12_MAXVERTS];
 int numBoardVertexes = 0;
 int numGuiVertexes = 0;
@@ -99,6 +102,8 @@ int numSpriteVertexes = 0;
 int numSpriteIndxes = 0;
 
 void polymer_updatesprited3d12(int32_t snum);
+
+ProjectionMatrixState_t projectionMatrixState = PROJECTION_MATRIX_NOTSET;
 
 extern tr_buffer* prd3d12_vertex_buffer;
 extern tr_buffer* prd3d12_index_buffer[3];
@@ -764,7 +769,7 @@ void polymer_fillpolygon(int32_t npoints)
     glDisable(GL_TEXTURE_2D);
 }
 
-void D3D12_CreateProjectionMatrix(int32_t fov, float4x4& projectionMatrix, int width, int height)
+void D3D12_CreateProjectionMatrix(int32_t fov, float4x4& projectionMatrix, int width, int height, float zNear, float zFar)
 {
 	float           aspect;
 	float fang = (float)fov * atanf((float)viewingrange / 65536.0f) / (PI / 4);
@@ -772,7 +777,7 @@ void D3D12_CreateProjectionMatrix(int32_t fov, float4x4& projectionMatrix, int w
 	aspect = (float)(width + 1) / (float)(height + 1);
 
 	float matrix[16];
-	glhPerspectivef2(matrix, fang / (2048.0f / 360.0f), aspect, 0.01f, 300.0f);
+	glhPerspectivef2(matrix, fang / (2048.0f / 360.0f), aspect, zNear, zFar);
 	projectionMatrix.r0 = float4(matrix[0], matrix[1], matrix[2], matrix[3]);
 	projectionMatrix.r1 = float4(matrix[4], matrix[5], matrix[6], matrix[7]);
 	projectionMatrix.r2 = float4(matrix[8], matrix[9], matrix[10], matrix[11]);
@@ -913,18 +918,11 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
 			viewMatrix = viewMatrix * translationMatrix;
 		}
 
+		D3D12_CreateProjectionMatrix(426, normalProjectionMatrix, xdim, ydim, 0.01f, 300.0f);
+        D3D12_CreateProjectionMatrix(426, biasedProjectionMatrix, xdim, ydim, 0.0105f, 300.5f);
 
-		float4x4 projectionMatrix;
-		float4x4 occlusionProjectionMatrix;
-		D3D12_CreateProjectionMatrix(426, projectionMatrix, xdim, ydim);
-
-		//projectionMatrix.SetX(Math::Vector4(fydimen, 0.0f   , 1.0f, 0.0f));
-		//projectionMatrix.SetY(Math::Vector4(0.0f   , fxdimen, 1.0f, 1.0f));
-		//projectionMatrix.SetZ(Math::Vector4(0.0f   , 0.0f   , 1.0f, fydimen));
-		//projectionMatrix.SetW(Math::Vector4(0.0f   , 0.0f   , -1.0f, 0.0f));
-
-		//XMMATRIX viewProj = view * proj;
-		GL_SetProjectionMatrix((float*)&projectionMatrix);
+		GL_SetProjectionMatrix((float*)&normalProjectionMatrix);
+		projectionMatrixState = PROJECTION_MATRIX_NORMAL;
 		GL_SetModelViewMatrix((float*)&viewMatrix);
 
 		//d3d12CoreState->m_sceneCB[frameIndex].cameraPosition = { position.x, position.y, position.z, position.w };
@@ -4147,6 +4145,10 @@ void polymer_updatesprited3d12(int32_t snum) {
 	polymer_getbuildmaterial(&sprite->plane.material, curpicnum, tspr->pal, tspr->shade,
 		sector[tspr->sectnum].visibility, DAMETH_MASK | DAMETH_CLAMPED);
 
+    if (projectionMatrixState != PROJECTION_MATRIX_BIASED) {
+        GL_SetProjectionMatrix((float*)&biasedProjectionMatrix);
+        projectionMatrixState = PROJECTION_MATRIX_BIASED;
+    }
 	if (plane->indicescount == NULL) {
 		numIndexes = 6;
 		GL_DrawBuffer(startIndex, 6);
@@ -4157,6 +4159,7 @@ void polymer_updatesprited3d12(int32_t snum) {
 		GL_DrawBuffer(startIndex, sprite->plane.indicescount);
         polymer_endwriteverts(tspr->picnum, startVertex, sprite->plane.vertcount, startIndex, sprite->plane.indicescount, sprite->plane.material.shadeoffset, sprite->plane.material.visibility, tspr->pal);
 	}
+    
 
 	//memcpy(((unsigned char*)prd3d12_index_buffer[frameIdx]->cpu_mapped_address) + (startIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
 

@@ -34,6 +34,15 @@ typedef struct
 	int8_t filler;
 } wallspriteinfo_t;
 
+enum ProjectionMatrixState_t {
+	PROJECTION_MATRIX_NOTSET = 0,
+	PROJECTION_MATRIX_NORMAL,
+	PROJECTION_MATRIX_BIASED,
+    PROJECTION_MATRIX_UI,
+};
+
+extern ProjectionMatrixState_t projectionMatrixState;
+
 extern wallspriteinfo_t wsprinfo[MAXSPRITES];
 
 struct glfiltermodes {

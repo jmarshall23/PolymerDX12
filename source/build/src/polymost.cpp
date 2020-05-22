@@ -9109,7 +9109,10 @@ void polymost_dorotatesprite(int32_t sx, int32_t sy, int32_t z, int16_t a, int16
         glDisable(GL_DEPTH_TEST);
     }
     else {
-		GL_SetProjectionMatrix(&m[0][0]);
+        if (projectionMatrixState != PROJECTION_MATRIX_UI) {
+            projectionMatrixState = PROJECTION_MATRIX_UI;
+            GL_SetProjectionMatrix(&m[0][0]);
+        }
 		GL_SetModelViewToIdentity();
     }
 
