@@ -312,6 +312,7 @@ tr_texture* lookupPaletteTexture = NULL;
 uint8_t* uploadedbasepaltable[MAXBASEPALS];
 bool isPolymerSetup = false;
 
+#pragma check_stack( off )
 void polymer_uploadnewpalette(void) {
 	int basepalnum = 0;
 	bool needsUpdate = false;
@@ -381,6 +382,7 @@ void polymer_uploadnewpalette(void) {
 
 	delete palookuptable;
 }
+#pragma check_stack( on )
 
 // EXTERNAL FUNCTIONS
 int32_t             polymer_init(void)
