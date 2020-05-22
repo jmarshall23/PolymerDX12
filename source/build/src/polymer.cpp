@@ -3114,6 +3114,10 @@ static void         polymer_updatewall(int16_t wallnum)
     uint32_t        invalid;
     int32_t         sectofwall = sectorofwall(wallnum);
 
+    int wc = wallchanged[wallnum];
+    if (wc == wsprinfo[wallnum].wrev)
+        return;
+
     if (pr_nullrender >= 3) return;
 
     // yes, this function is messy and unefficient
@@ -3633,6 +3637,11 @@ static void         polymer_updatewall(int16_t wallnum)
     w->flags.uptodate = 1;
     w->flags.invalidtex = 0;
 
+	wallspriteinfo_t* ws = &wsprinfo[wallnum];
+	//ws->wdist = walldist;
+    ws->wrev = wc;
+	//ws->srev = spritechanged[s];
+
     if (pr_verbosity >= 3) OSD_Printf("PR : Updated wall %i.\n", wallnum);
 }
 
@@ -4111,16 +4120,20 @@ void polymer_updatesprited3d12(int32_t snum) {
 		v->st[1] = plane->buffer[i].v;
 	}
 
+    bool needIndexUpdate = false;
+
+    unsigned int* indexPtr = (unsigned int*)(((unsigned char*)prd3d12_index_buffer[frameIdx]->cpu_mapped_address) + (startIndex * sizeof(unsigned int)));
 	if (plane->indicescount == NULL) {
-		for (i = 0; i < 6; i++, numSpriteIndxes++) {
+		for (i = 0; i < 6; i++, numSpriteIndxes++, indexPtr++) {
 			static const uint32_t quadindices[6] = { 0, 1, 2, 0, 2, 3 };
-			board_indexes_table[startIndex + i] = startVertex + quadindices[i];
+            *indexPtr = startVertex + quadindices[i];
 		}
 	}
 	else {
-		for (i = 0; i < plane->indicescount; i++, numSpriteIndxes++) {
-			board_indexes_table[startIndex + i] = plane->indices[i] + startVertex;
-		}
+		//for (i = 0; i < plane->indicescount; i++, numSpriteIndxes++) {
+		//	board_indexes_table[startIndex + i] = plane->indices[i] + startVertex;
+		//}
+        assert(!"is this ever a thing?");
 	}
 
 	pthtyp* pth = texcache_fetch(tspr->picnum, 0, 0, DAMETH_NOMASK);
@@ -4145,7 +4158,7 @@ void polymer_updatesprited3d12(int32_t snum) {
         polymer_endwriteverts(tspr->picnum, startVertex, sprite->plane.vertcount, startIndex, sprite->plane.indicescount, sprite->plane.material.shadeoffset, sprite->plane.material.visibility, tspr->pal);
 	}
 
-	memcpy(((unsigned char*)prd3d12_index_buffer[frameIdx]->cpu_mapped_address) + (startIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
+	//memcpy(((unsigned char*)prd3d12_index_buffer[frameIdx]->cpu_mapped_address) + (startIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
 
 	//	sprite->plane.visibility = sector[tspr->sectnum].visibility;
 	//	sprite->plane.shadeNum = tspr->shade;

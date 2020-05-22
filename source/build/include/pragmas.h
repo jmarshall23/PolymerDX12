@@ -103,7 +103,7 @@ static inline int64_t divscale64(int64_t eax, int64_t ebx, int64_t ecx) { return
 EDUKE32_GENERATE_PRAGMAS EDUKE32_SCALER_PRAGMA(32)
 #undef EDUKE32_SCALER_PRAGMA
 
-static inline int32_t scale(int32_t eax, int32_t edx, int32_t ecx)
+static FORCE_INLINE int32_t scale(int32_t eax, int32_t edx, int32_t ecx)
 {
     return dw((qw(eax) * qw(edx)) / qw(ecx));
 }

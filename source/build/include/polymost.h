@@ -25,6 +25,17 @@ extern float gvrcorrection;
 
 struct tr_texture* GetTileSheet(int index);
 
+typedef struct
+{
+	uint32_t wrev;
+	uint32_t srev;
+	int16_t wall;
+	int8_t wdist;
+	int8_t filler;
+} wallspriteinfo_t;
+
+extern wallspriteinfo_t wsprinfo[MAXSPRITES];
+
 struct glfiltermodes {
     const char *name;
     int32_t min,mag;

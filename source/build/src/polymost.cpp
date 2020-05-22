@@ -7504,15 +7504,6 @@ void polymost_completeMirror()
     glDisable(GL_STENCIL_TEST);
 }
 
-typedef struct
-{
-    uint32_t wrev;
-    uint32_t srev;
-    int16_t wall;
-    int8_t wdist;
-    int8_t filler;
-} wallspriteinfo_t;
-
 wallspriteinfo_t wsprinfo[MAXSPRITES];
 
 void Polymost_prepare_loadboard(void)
