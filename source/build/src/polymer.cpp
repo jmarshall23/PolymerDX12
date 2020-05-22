@@ -2485,6 +2485,8 @@ static int32_t      polymer_updatesector(int16_t sectnum)
 
     if ((s->flags.empty) ||
             needfloor ||
+            (sec->ceilingpicnum != s->ceilingpicnum) ||
+            (sec->floorpicnum != s->floorpicnum) ||
             (sec->floorz != s->floorz) ||
             (sec->ceilingz != s->ceilingz) ||
             (sec->floorheinum != s->floorheinum) ||
@@ -2506,6 +2508,8 @@ static int32_t      polymer_updatesector(int16_t sectnum)
             wal = &wall[sec->wallptr + i];
         }
 
+        s->ceilingpicnum = sec->ceilingpicnum;
+        s->floorpicnum = sec->floorpicnum;
         s->floorz = sec->floorz;
         s->ceilingz = sec->ceilingz;
         s->floorheinum = sec->floorheinum;
