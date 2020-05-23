@@ -189,6 +189,7 @@ int polymer_loadmonoshader(const char *macros) {
 
 		if (i < POLYMER_DX12_UIDRAWCALL) {
 			pipeline_settings.depth = true;
+			pipeline_settings.cull_mode = tr_cull_mode_back;
 		}
 		else {
 			pipeline_settings.depth = false;

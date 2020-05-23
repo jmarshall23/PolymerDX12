@@ -800,6 +800,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
     pthtyp*         pth;
 
     tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]);
+    memset(prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]->cpu_mapped_address, 0, sizeof(int) * POLYMER_DX12_MAXINDEXES);
 
     if (videoGetRenderMode() == REND_CLASSIC) return;
 
@@ -1661,7 +1662,7 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
 		do
 		{
 			if (polymer_isWallVisible(sec->wallptr + i))
-				polymer_drawwall(d, sec->wallptr + i);
+			    polymer_drawwall(d, sec->wallptr + i);
 
 			//sectorqueue[d] = wall[sec->wallptr + i].nextsector;
 			drawingstate[wall[sec->wallptr + i].nextsector] = 1;
@@ -2966,17 +2967,23 @@ static void         polymer_drawsector(int16_t sectnum, int32_t domasks)
     // provide compelling evidence that the generated code is more efficient
     // than what GCC can come up with on its own.
 
-    draw = TRUE;
+    // Parralax Skies
+	if (sec->floorstat & 1) {
+		draw = FALSE;
+	}
+    else {
+        draw = TRUE;
+    }
     // Draw masks regardless; avoid all non-masks TROR links
-    if (sec->floorstat & 384) {
-        draw = domasks;
-    } else if (yax_getbunch(sectnum, YAX_FLOOR) >= 0) {
-        draw = FALSE;
-    }
-    // Parallaxed
-    if (sec->floorstat & 1) {
-        draw = FALSE;
-    }
+    //if ((sec->floorstat & 384) && !(sec->ceilingstat & 8)) {
+    //    draw = domasks;
+    //} else if (yax_getbunch(sectnum, YAX_FLOOR) >= 0) {
+    //    draw = FALSE;
+    //}
+    //// Parallaxed
+    //if ((sec->floorstat & 1) && !(sec->ceilingstat & 8)) {
+    //    draw = FALSE;
+    //}
 
     if (draw || (searchit == 2)) {
         if (searchit == 2) {
@@ -2994,17 +3001,13 @@ static void         polymer_drawsector(int16_t sectnum, int32_t domasks)
         queuedmask = TRUE;
     }
 
-    draw = TRUE;
-    // Draw masks regardless; avoid all non-masks TROR links
-    if (sec->ceilingstat & 384) {
-        draw = domasks;
-    } else if (yax_getbunch(sectnum, YAX_CEILING) >= 0) {
-        draw = FALSE;
-    }
-    // Parallaxed
-    if (sec->ceilingstat & 1) {
-        draw = FALSE;
-    }
+	// Parralax Skies
+	if (sec->ceilingstat & 1) {
+		draw = FALSE;
+	}
+	else {
+		draw = TRUE;
+	}
 
     if (draw || (searchit == 2)) {
         if (searchit == 2) {

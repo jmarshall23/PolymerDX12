@@ -6618,7 +6618,7 @@ static void polymost_drawalls(int32_t const bunch)
                     xtex.u += (float)(nwal->xpanning - wal->xpanning) * xtex.d;
                     ytex.u += (float)(nwal->xpanning - wal->xpanning) * ytex.d;
                 }
-                globalpicnum = nwal->picnum; globalshade = nwal->shade; globalpal = (int32_t)((uint8_t)nwal->pal);
+                globalpicnum = nwal->picnum; globalshade = nwal->shade; globalpal = (int32_t)((uint8_t)nwal->pal);   
                 globvis = globalvisibility;
                 if (sector[sectnum].visibility != 0) globvis = mulscale4(globvis, (uint8_t)(sector[sectnum].visibility+16));
                 globvis2 = globalvisibility2;
@@ -7589,7 +7589,10 @@ void polymost_prepareMirror(int32_t dax, int32_t day, int32_t daz, fix16_t daang
     ghoriz = fix16_to_float(qglobalhoriz);
     ghorizcorrect = fix16_to_float((100-polymostcenterhoriz)*divscale16(xdimenscale, viewingrange));
     gvisibility = ((float)globalvisibility)*FOGSCALE;
-    resizeglcheck();
+    if (rhiType == RHI_OPENGL)
+    {
+        resizeglcheck();
+    }
     if (r_yshearing)
     {
         gshang  = 0.f;
@@ -7613,20 +7616,23 @@ void polymost_prepareMirror(int32_t dax, int32_t day, int32_t daz, fix16_t daang
     }
     grhalfxdown10x = grhalfxdown10;
 
-    //POGO: write the mirror region to the stencil buffer to allow showing mirrors & skyboxes at the same time
-    glEnable(GL_STENCIL_TEST);
-    glClear(GL_STENCIL_BUFFER_BIT);
-    glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
-    glStencilFunc(GL_ALWAYS, 1, 0xFF);
-    glDisable(GL_ALPHA_TEST);
-    glDisable(GL_DEPTH_TEST);
-    polymost_drawmaskwallinternal(mirrorWall);
-    glEnable(GL_ALPHA_TEST);
-    glEnable(GL_DEPTH_TEST);
+    if (rhiType == RHI_OPENGL)
+    {
+        //POGO: write the mirror region to the stencil buffer to allow showing mirrors & skyboxes at the same time
+        glEnable(GL_STENCIL_TEST);
+        glClear(GL_STENCIL_BUFFER_BIT);
+        glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
+        glStencilFunc(GL_ALWAYS, 1, 0xFF);
+        glDisable(GL_ALPHA_TEST);
+        glDisable(GL_DEPTH_TEST);
+        polymost_drawmaskwallinternal(mirrorWall);
+        glEnable(GL_ALPHA_TEST);
+        glEnable(GL_DEPTH_TEST);
 
-    //POGO: render only to the mirror region
-    glStencilFunc(GL_EQUAL, 1, 0xFF);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        //POGO: render only to the mirror region
+        glStencilFunc(GL_EQUAL, 1, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+    }
 }
 
 void polymost_completeMirror()

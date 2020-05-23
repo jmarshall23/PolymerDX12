@@ -1075,8 +1075,8 @@ ViewSectorInScene(short cursectnum, short level)
                 // found a potential match
                 match = sp->lotag;
 
-                if (!PicInView(FAF_MIRROR_PIC, TRUE))
-                    return -1;
+				if (!PicInView(FAF_MIRROR_PIC, TRUE))
+					return -1;
 
                 return match;
             }
