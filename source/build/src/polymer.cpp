@@ -15,6 +15,8 @@
 #include "vectormath.h"
 #include <DirectXMath.h>
 
+bool shouldRenderSky = true;
+
 // CVARS
 int32_t         pr_lighting = 1;
 int32_t         pr_normalmapping = 1;
@@ -103,10 +105,9 @@ int numSpriteIndxes = 0;
 
 void polymer_updatesprited3d12(int32_t snum);
 
+int currentDrawRoomLayer = 0;
 ProjectionMatrixState_t projectionMatrixState = PROJECTION_MATRIX_NOTSET;
-
 extern tr_buffer* prd3d12_vertex_buffer;
-extern tr_buffer* prd3d12_index_buffer[3];
 
 const GLsizeiptr proneplanesize = sizeof(_prvert) * 4;
 const GLintptr prwalldatasize = sizeof(_prvert)* 4 * 3; // wall, over and mask planes for every wall
@@ -800,9 +801,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
 
     if (videoGetRenderMode() == REND_CLASSIC) return;
 
-    polymost_gatherrooms();    
-
-	memset(prd3d12_index_buffer[frameIdx]->cpu_mapped_address, 0, sizeof(int) * POLYMER_DX12_MAXINDEXES);
+    polymost_gatherrooms();      
 
     videoBeginDrawing();
 
@@ -979,7 +978,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
             (daposz < cursectceilz))
     {
         prcanbucket = 1;
-
+        
         if (!editstatus && pr_verbosity>=1)
         {
             if ((unsigned)dacursectnum < (unsigned)numsectors)
@@ -987,7 +986,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
             else
                 OSD_Printf("PR : EXT sec=%d  z=%d\n", dacursectnum, daposz);
         }
-
+        
         curmodelviewmatrix = rootmodelviewmatrix;
         i = numsectors-1;
         while (i >= 0)
@@ -997,7 +996,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
             polymer_scansprites(i, tsprite, &spritesortcnt);
             i--;
         }
-
+        
         i = numwalls-1;
         while (i >= 0)
         {
@@ -1005,11 +1004,12 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
             polymer_drawwall(sectorofwall(i), i);
             i--;
         }
-
+        
         polymer_emptybuckets();
-
+        
         viewangle = daang;
         videoEndDrawing();
+        currentDrawRoomLayer++;
         return;
     }
 
@@ -1030,6 +1030,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
 
     if (pr_verbosity >= 3) OSD_Printf("PR : Rooms drawn.\n");
     videoEndDrawing();
+    currentDrawRoomLayer++;
 }
 
 void                polymer_drawmasks(void)
@@ -1566,7 +1567,6 @@ int32_t             polymer_havehighpalookup(int32_t basepalnum, int32_t palnum)
     return (prhighpalookups[basepalnum][palnum].data != NULL);
 }
 
-
 // CORE
 static void         polymer_displayrooms(const int16_t dacursectnum)
 {
@@ -1627,7 +1627,11 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
 		glEnable(GL_DEPTH_TEST);
 	}
 	else if (rhiType == RHI_D3D12) {
-		polymer_drawsky(cursky, curskypal, curskyshade);
+        tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]);
+        if (shouldRenderSky) {
+            polymer_drawsky(cursky, curskypal, curskyshade);
+            shouldRenderSky = false;
+        }
 		tr_clear_value depth_stencil_clear_value = { 0 };
 		depth_stencil_clear_value.depth = 1.0f;
 		depth_stencil_clear_value.stencil = 255;
@@ -2129,7 +2133,7 @@ static void         polymer_drawplane(_prplane* plane)
 
 		int startIndex = plane->indexoffset;
 		int numIndexes = plane->numindexes;
-		memcpy(((unsigned char*)prd3d12_index_buffer[frameIdx]->cpu_mapped_address) + (startIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
+		memcpy(((unsigned char*)prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]->cpu_mapped_address) + (startIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
 		return;
 	}
 
@@ -2451,6 +2455,9 @@ static int32_t      polymer_updatesector(int16_t sectnum)
     sec = (usectorptr_t)&sector[sectnum];
 
     secangcos = secangsin = 2;
+
+    setgotpic(sec->ceilingpicnum);
+    setgotpic(sec->floorpicnum);
 
     if (s == NULL)
     {
@@ -3153,6 +3160,8 @@ static void         polymer_updatewall(int16_t wallnum)
 
     wallpicnum = wal->picnum;
     tileUpdatePicnum(&wallpicnum, wallnum+16384);
+
+    setgotpic(wallpicnum);
 
     walloverpicnum = wal->overpicnum;
     if (walloverpicnum>=0)
@@ -4121,7 +4130,7 @@ void polymer_updatesprited3d12(int32_t snum) {
 
     bool needIndexUpdate = false;
 
-    unsigned int* indexPtr = (unsigned int*)(((unsigned char*)prd3d12_index_buffer[frameIdx]->cpu_mapped_address) + (startIndex * sizeof(unsigned int)));
+    unsigned int* indexPtr = (unsigned int*)(((unsigned char*)prd3d12_index_buffer[currentDrawRoomLayer][frameIdx]->cpu_mapped_address) + (startIndex * sizeof(unsigned int)));
 	if (plane->indicescount == NULL) {
 		for (i = 0; i < 6; i++, numSpriteIndxes++, indexPtr++) {
 			static const uint32_t quadindices[6] = { 0, 1, 2, 0, 2, 3 };

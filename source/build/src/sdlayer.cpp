@@ -2022,7 +2022,9 @@ void videoShowFrame(int32_t w)
 			depth_stencil_clear_value.depth = 1.0f;
 			depth_stencil_clear_value.stencil = 255;
 			tr_cmd_clear_depth_stencil_attachment(graphicscmd, &depth_stencil_clear_value);            
-            tr_cmd_bind_vertex_buffers(graphicscmd, 1, &prd3d12_vertex_buffer);
+            tr_cmd_bind_vertex_buffers(graphicscmd, 1, &prd3d12_vertex_buffer);            
+
+            memset(prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]->cpu_mapped_address, 0, sizeof(int) * POLYMER_DX12_MAXINDEXES);
 		}
 		return;
 	}

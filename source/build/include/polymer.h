@@ -462,6 +462,10 @@ typedef struct      s_pranimatespritesinfo {
 // this one has to be provided by the application
 extern void G_Polymer_UnInit(void);
 
+#define MAX_DRAWROOM_LAYERS 8
+extern int currentDrawRoomLayer;
+extern struct tr_buffer* prd3d12_index_buffer[3][MAX_DRAWROOM_LAYERS];
+
 // EXTERNAL FUNCTIONS
 int32_t             polymer_init(void);
 void                polymer_uninit(void);

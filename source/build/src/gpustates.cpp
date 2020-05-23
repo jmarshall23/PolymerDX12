@@ -9,7 +9,7 @@
 extern tr_cmd* graphicscmd;
 
 tr_buffer* prd3d12_vertex_buffer;
-tr_buffer* prd3d12_index_buffer[3];
+tr_buffer* prd3d12_index_buffer[3][MAX_DRAWROOM_LAYERS];
 tr_buffer* prd3d12_null_index_buffer;
 
 extern uint32_t frameIdx;
@@ -21,6 +21,8 @@ extern int numFrameDrawCalls;
 extern int numFrameUIDrawCalls;
 extern int numSpriteVertexes;
 extern int numSpriteIndxes;
+
+extern bool shouldRenderSky;
 
 float projection_matrix[16] = { 1, 0, 0, 0,
 								0, 1, 0, 0,
@@ -68,7 +70,10 @@ void GL_Init(void) {
 
 	tr_create_vertex_buffer(m_renderer, vertexDataSize, true, vertexStride, &prd3d12_vertex_buffer);
 	for (int i = 0; i < 3; i++) {		
-		tr_create_index_buffer(m_renderer, indexDataSize, true, tr_index_type_uint32, &prd3d12_index_buffer[i]);
+		for (int d = 0; d < 3; d++)
+		{
+			tr_create_index_buffer(m_renderer, indexDataSize, true, tr_index_type_uint32, &prd3d12_index_buffer[i][d]);
+		}
 	}
 
 	tr_create_index_buffer(m_renderer, 6 * sizeof(uint32_t), true, tr_index_type_uint32, &prd3d12_null_index_buffer);
@@ -163,24 +168,27 @@ void GL_DrawBuffer(int picnum, float * drawpolyVerts, int numPoints) {
 
 
 void GL_DrawBuffer(int startIndex, int numIndexes) {
+	if (numIndexes < 20)
+		return;
+
 	shaderUniformBuffer_t uniformBuffer;
 	GL_MultiplyMatrix(modelview_matrix, projection_matrix, uniformBuffer.mvp);
 	//memcpy(uniformBuffer.worldbuffer, modelview_matrix, sizeof(float) * 16);
-	GL_BindDescSetForDrawCall(uniformBuffer, true);
-	
-	tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx]);
+	GL_BindDescSetForDrawCall(uniformBuffer, true);	
 
 	tr_cmd_draw_indexed(graphicscmd, numIndexes, startIndex);
 
-	tr_cmd_bind_index_buffer(graphicscmd, prd3d12_null_index_buffer);
+	//tr_cmd_bind_index_buffer(graphicscmd, prd3d12_null_index_buffer);
 	numFrameDrawCalls++;
 }
 
 
 void GL_EndFrame(void) {
+	currentDrawRoomLayer = 0;
 	numFrameDrawCalls = 0;
 	numGuiVertexes = 0;
 	numSpriteVertexes = 0;
 	numFrameUIDrawCalls = 0;
 	numSpriteIndxes = 0;
+	shouldRenderSky = true;
 }
