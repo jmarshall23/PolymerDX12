@@ -799,6 +799,8 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
     float           pos[3];
     pthtyp*         pth;
 
+    tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]);
+
     if (videoGetRenderMode() == REND_CLASSIC) return;
 
     polymost_gatherrooms();      
@@ -1010,6 +1012,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
         viewangle = daang;
         videoEndDrawing();
         currentDrawRoomLayer++;
+        tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]);
         return;
     }
 
@@ -1031,6 +1034,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
     if (pr_verbosity >= 3) OSD_Printf("PR : Rooms drawn.\n");
     videoEndDrawing();
     currentDrawRoomLayer++;
+    tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]);
 }
 
 void                polymer_drawmasks(void)
@@ -1626,8 +1630,7 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
 		polymer_drawsky(cursky, curskypal, curskyshade);
 		glEnable(GL_DEPTH_TEST);
 	}
-	else if (rhiType == RHI_D3D12) {
-        tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]);
+	else if (rhiType == RHI_D3D12) {        
         if (shouldRenderSky) {
             polymer_drawsky(cursky, curskypal, curskyshade);
             shouldRenderSky = false;
@@ -4119,30 +4122,32 @@ void polymer_updatesprited3d12(int32_t snum) {
 	_prplane* plane = &sprite->plane;
 
     Vertex* v = polymer_beginwriteverts(startVertex);
-	for (i = 0; i < plane->vertcount; i++, numSpriteVertexes++, v++) {
-		v->position[0] = plane->buffer[i].x;
-		v->position[1] = plane->buffer[i].y;
-		v->position[2] = plane->buffer[i].z;
+	for (i = 0; i < 6; i++, numSpriteVertexes++, v++) {
+        static const uint32_t quadindices[6] = { 0, 1, 2, 0, 2, 3 };
 
-		v->st[0] = plane->buffer[i].u;
-		v->st[1] = plane->buffer[i].v;
+		v->position[0] = plane->buffer[quadindices[i]].x;
+		v->position[1] = plane->buffer[quadindices[i]].y;
+		v->position[2] = plane->buffer[quadindices[i]].z;
+
+		v->st[0] = plane->buffer[quadindices[i]].u;
+		v->st[1] = plane->buffer[quadindices[i]].v;
 	}
 
     bool needIndexUpdate = false;
 
-    unsigned int* indexPtr = (unsigned int*)(((unsigned char*)prd3d12_index_buffer[currentDrawRoomLayer][frameIdx]->cpu_mapped_address) + (startIndex * sizeof(unsigned int)));
-	if (plane->indicescount == NULL) {
-		for (i = 0; i < 6; i++, numSpriteIndxes++, indexPtr++) {
-			static const uint32_t quadindices[6] = { 0, 1, 2, 0, 2, 3 };
-            *indexPtr = startVertex + quadindices[i];
-		}
-	}
-	else {
-		//for (i = 0; i < plane->indicescount; i++, numSpriteIndxes++) {
-		//	board_indexes_table[startIndex + i] = plane->indices[i] + startVertex;
-		//}
-        assert(!"is this ever a thing?");
-	}
+    //unsigned int* indexPtr = (unsigned int*)(((unsigned char*)prd3d12_index_buffer[currentDrawRoomLayer][frameIdx]->cpu_mapped_address) + (startIndex * sizeof(unsigned int)));
+	//if (plane->indicescount == NULL) {
+	//	for (i = 0; i < 6; i++, numSpriteIndxes++, indexPtr++) {
+	//		static const uint32_t quadindices[6] = { 0, 1, 2, 0, 2, 3 };
+    //        *indexPtr = startVertex + quadindices[i];
+	//	}
+	//}
+	//else {
+	//	//for (i = 0; i < plane->indicescount; i++, numSpriteIndxes++) {
+	//	//	board_indexes_table[startIndex + i] = plane->indices[i] + startVertex;
+	//	//}
+    //    assert(!"is this ever a thing?");
+	//}
 
 	pthtyp* pth = texcache_fetch(tspr->picnum, 0, 0, DAMETH_NOMASK);
 
@@ -4161,7 +4166,7 @@ void polymer_updatesprited3d12(int32_t snum) {
     }
 	if (plane->indicescount == NULL) {
 		numIndexes = 6;
-		GL_DrawBuffer(startIndex, 6);
+        GL_DrawBufferVertex(startVertex, 6);
         polymer_endwriteverts(tspr->picnum, startVertex, sprite->plane.vertcount, startIndex, 6, sprite->plane.material.shadeoffset, sprite->plane.material.visibility, tspr->pal);
 	}
 	else {

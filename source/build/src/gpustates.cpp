@@ -180,6 +180,19 @@ void GL_DrawBuffer(int startIndex, int numIndexes) {
 }
 
 
+void GL_DrawBufferVertex(int startVertex, int numPoints) {
+	shaderUniformBuffer_t uniformBuffer;
+	GL_MultiplyMatrix(modelview_matrix, projection_matrix, uniformBuffer.mvp);
+	//memcpy(uniformBuffer.worldbuffer, modelview_matrix, sizeof(float) * 16);
+	GL_BindDescSetForDrawCall(uniformBuffer, true);
+
+	tr_cmd_draw(graphicscmd, numPoints, startVertex);
+
+	//tr_cmd_bind_index_buffer(graphicscmd, prd3d12_null_index_buffer);
+	numFrameDrawCalls++;
+}
+
+
 void GL_EndFrame(void) {
 	currentDrawRoomLayer = 0;
 	numFrameDrawCalls = 0;

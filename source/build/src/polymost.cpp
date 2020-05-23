@@ -5254,7 +5254,8 @@ static void polymost_internal_nonparallaxed(vec2f_t n0, vec2f_t n1, float ryp0, 
 
 		if (polymostOcclusionGatherOnly) {
 			if (domostpolymethod & DAMETH_MASKPROPS)
-				glEnable(GL_BLEND);
+                if(rhiType == RHI_OPENGL)
+				    glEnable(GL_BLEND);
 			polymerOcclusionMarkSector(globalsectornum);
 		}
         else {

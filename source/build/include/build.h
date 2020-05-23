@@ -56,7 +56,7 @@ void GL_DrawBuffer(int startIndex, int numIndexes);
 void GL_EndFrame(void);
 void GL_BindTexture(struct tr_texture* texture, int tmu);
 void GL_BindDescSetForDrawCall(shaderUniformBuffer_t& uniformBuffer, bool depth);
-
+void GL_DrawBufferVertex(int startVertex, int numPoints);
 
 #ifdef __cplusplus
 extern "C" {
