@@ -168,9 +168,6 @@ void GL_DrawBuffer(int picnum, float * drawpolyVerts, int numPoints) {
 
 
 void GL_DrawBuffer(int startIndex, int numIndexes) {
-	if (numIndexes < 20)
-		return;
-
 	shaderUniformBuffer_t uniformBuffer;
 	GL_MultiplyMatrix(modelview_matrix, projection_matrix, uniformBuffer.mvp);
 	//memcpy(uniformBuffer.worldbuffer, modelview_matrix, sizeof(float) * 16);
