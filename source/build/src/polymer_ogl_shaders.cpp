@@ -16,15 +16,6 @@
 const char *glVertexProgramBuffer   = nullptr;
 const char *glFragmentProgramBuffer = nullptr;
 
-#ifdef BUILD_VULKAN
-const char* vkMonolithShaderBufferVertex = nullptr;
-int vkMonolithShaderBufferVertexSize = -1;
-const char* vkMonolithShaderBufferFragment = nullptr;
-int vkMonolithShaderBufferFragmentSize = -1;
-#else
-const char* d3d12MonolithShaderBuffer = nullptr;
-#endif
-
 extern _prprograminfo  prprograms[1 << PR_BIT_COUNT];
 extern tr_renderer* m_renderer;
 extern tr_cmd* graphicscmd;
@@ -32,17 +23,42 @@ extern uint32_t currentShaderProgramID;
 
 struct buildShader_t {
 	tr_shader_program* m_shader;	
+#ifdef BUILD_VULKAN
+	const char* vkMonolithShaderBufferVertex = nullptr;
+	int vkMonolithShaderBufferVertexSize = -1;
+	const char* vkMonolithShaderBufferFragment = nullptr;
+	int vkMonolithShaderBufferFragmentSize = -1;
+#else
+	const char* d3d12MonolithShaderBuffer = nullptr;
+#endif
+
+	void Reset(void) {
+		if (vkMonolithShaderBufferVertex) {
+			free((void*)vkMonolithShaderBufferVertex);
+			vkMonolithShaderBufferVertex = nullptr;
+		}
+		if (vkMonolithShaderBufferFragment) {
+			free((void*)vkMonolithShaderBufferFragment);
+			vkMonolithShaderBufferFragment = nullptr;
+		}
+	}
 };
 
 buildShader_t polymerMonolithicShader;
+buildShader_t polymerMonolithicTransShader;
 
+#define POLYMER_DX12_MAXTRANSCALLS				  50
 #define POLYMER_DX12_MAXDRAWCALLS				4000
 #define POLYMER_DX12_MAXUIDRAWCALLS				 200
+
+#define POLYMER_DX12_NONTRANSDRAWCALL			POLYMER_DX12_MAXTRANSCALLS
 #define POLYMER_DX12_UIDRAWCALL					(POLYMER_DX12_MAXDRAWCALLS - POLYMER_DX12_MAXUIDRAWCALLS)
+
 tr_descriptor_set* m_desc_set[POLYMER_DX12_MAXDRAWCALLS];
 tr_pipeline*	   m_pipeline[POLYMER_DX12_MAXDRAWCALLS];
 tr_buffer*		   m_uniform_buffers[POLYMER_DX12_MAXDRAWCALLS];
 int numFrameDrawCalls = 0;
+int numFrameTransDrawCalls = 0;
 int numFrameUIDrawCalls = 0;
 
 /*
@@ -50,44 +66,75 @@ int numFrameUIDrawCalls = 0;
 GL_BindTexture
 =====================
 */
-void GL_BindTexture(struct tr_texture *texture, int tmu) {
+void GL_BindTexture(struct tr_texture *texture, int tmu, bool trans, bool ui) {
 	extern tr_sampler* m_linear_sampler;
 	extern tr_texture* basePaletteTexture;
 	extern tr_texture* lookupPaletteTexture;
 
+	int drawCall = -1;
+	if(ui)
+	{
+		drawCall = POLYMER_DX12_UIDRAWCALL + numFrameUIDrawCalls;
+	}
+	else
+	{
+		if (trans) {
+			drawCall = numFrameTransDrawCalls;
+		}
+		else {
+			drawCall = POLYMER_DX12_MAXTRANSCALLS + numFrameDrawCalls;
+		}
+	}
 
 	if (texture == NULL) {
 		texture = GetTileSheet(0);
 	}
 
-	if (m_desc_set[numFrameDrawCalls]->descriptors[1].textures[0] != NULL && texture != NULL)
+	if (m_desc_set[drawCall]->descriptors[1].textures[0] != NULL && texture != NULL)
 	{
-		if (m_desc_set[numFrameDrawCalls]->descriptors[1].textures[0] == texture)
+		if (m_desc_set[drawCall]->descriptors[1].textures[0] == texture)
 			return;
 	}
 
-	m_desc_set[numFrameDrawCalls]->descriptors[1].textures[0] = texture;
-	m_desc_set[numFrameDrawCalls]->descriptors[2].textures[0] = basePaletteTexture;
-	m_desc_set[numFrameDrawCalls]->descriptors[3].textures[0] = lookupPaletteTexture;
-	tr_update_descriptor_set(m_renderer, m_desc_set[numFrameDrawCalls]);
+	m_desc_set[drawCall]->descriptors[1].textures[0] = texture;
+	m_desc_set[drawCall]->descriptors[2].textures[0] = basePaletteTexture;
+	m_desc_set[drawCall]->descriptors[3].textures[0] = lookupPaletteTexture;
+	tr_update_descriptor_set(m_renderer, m_desc_set[drawCall]);
 }
 /*
 =====================
 GL_BindDescSetForDrawCall
 =====================
 */
-void GL_BindDescSetForDrawCall(shaderUniformBuffer_t& uniformBuffer, bool depth) {
+void GL_BindDescSetForDrawCall(shaderUniformBuffer_t& uniformBuffer, bool depth, bool trans) {
+	int drawCall = -1;
 	if(!depth) {
-		tr_cmd_bind_pipeline(graphicscmd, m_pipeline[POLYMER_DX12_UIDRAWCALL + numFrameUIDrawCalls]);
-		tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[POLYMER_DX12_UIDRAWCALL + numFrameUIDrawCalls], m_desc_set[numFrameDrawCalls]);
+		drawCall = POLYMER_DX12_UIDRAWCALL + numFrameUIDrawCalls;
+
+		memcpy(m_uniform_buffers[drawCall]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
+		tr_cmd_bind_pipeline(graphicscmd, m_pipeline[drawCall]);
+		tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[drawCall], m_desc_set[drawCall]);
 		numFrameUIDrawCalls++;
 	}
-	else {
-		tr_cmd_bind_pipeline(graphicscmd, m_pipeline[numFrameDrawCalls]);
-		tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[numFrameDrawCalls], m_desc_set[numFrameDrawCalls]);
-	}
+	else {		
+		if (trans) {
+			drawCall = numFrameTransDrawCalls;
+		}
+		else {
+			drawCall = POLYMER_DX12_MAXTRANSCALLS + numFrameDrawCalls;
+		}
 
-	memcpy(m_uniform_buffers[numFrameDrawCalls]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
+		memcpy(m_uniform_buffers[drawCall]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
+		tr_cmd_bind_pipeline(graphicscmd, m_pipeline[drawCall]);
+		tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[drawCall], m_desc_set[drawCall]);
+
+		if (!trans) {
+			numFrameDrawCalls++;
+		}
+		else {
+			numFrameTransDrawCalls++;
+		}		
+	}		
 }
 
 /*
@@ -115,20 +162,20 @@ polymer_loadmonoshader
 */
 int polymer_loadmonoshader(const char *macros) {
 	std::string fullShader;
-	buildShader_t newShader;
 
 	if(macros) {
 		fullShader += macros;
 	}
 
 #ifdef BUILD_VULKAN
-	tr_create_shader_program(m_renderer, vkMonolithShaderBufferVertexSize, vkMonolithShaderBufferVertex, "VSMain", vkMonolithShaderBufferFragmentSize, vkMonolithShaderBufferFragment, "PSMain", &newShader.m_shader);
+	tr_create_shader_program(m_renderer, polymerMonolithicShader.vkMonolithShaderBufferVertexSize, polymerMonolithicShader.vkMonolithShaderBufferVertex, "VSMain", polymerMonolithicShader.vkMonolithShaderBufferFragmentSize, polymerMonolithicShader.vkMonolithShaderBufferFragment, "PSMain", &polymerMonolithicShader.m_shader);
+	tr_create_shader_program(m_renderer, polymerMonolithicTransShader.vkMonolithShaderBufferVertexSize, polymerMonolithicTransShader.vkMonolithShaderBufferVertex, "VSMain", polymerMonolithicTransShader.vkMonolithShaderBufferFragmentSize, polymerMonolithicTransShader.vkMonolithShaderBufferFragment, "PSMain", &polymerMonolithicTransShader.m_shader);
 #else
 	fullShader += d3d12MonolithShaderBuffer;
 	tr_create_shader_program(m_renderer, (uint32_t)fullShader.size(), (uint32_t*)(fullShader.data()), "VSMain", (uint32_t)fullShader.size(), (uint32_t*)(fullShader.data()), "PSMain", &newShader.m_shader);
 #endif
 
-	if(newShader.m_shader == NULL) {
+	if(polymerMonolithicTransShader.m_shader == NULL || polymerMonolithicShader.m_shader == NULL) {
 		return -1;
 	}
 
@@ -190,11 +237,19 @@ int polymer_loadmonoshader(const char *macros) {
 		if (i < POLYMER_DX12_UIDRAWCALL) {
 			pipeline_settings.depth = true;
 			pipeline_settings.cull_mode = tr_cull_mode_back;
+			if (i < POLYMER_DX12_MAXTRANSCALLS)
+			{
+				pipeline_settings.alphaBlend = true;
+			}
 		}
 		else {
 			pipeline_settings.depth = false;
 		}
-		tr_create_pipeline(m_renderer, newShader.m_shader, &vertex_layout, m_desc_set[i], m_renderer->swapchain_render_targets[0], &pipeline_settings, &m_pipeline[i]);
+
+		if(i < POLYMER_DX12_MAXTRANSCALLS)
+			tr_create_pipeline(m_renderer, polymerMonolithicTransShader.m_shader, &vertex_layout, m_desc_set[i], m_renderer->swapchain_render_targets[0], &pipeline_settings, &m_pipeline[i]);
+		else
+			tr_create_pipeline(m_renderer, polymerMonolithicShader.m_shader, &vertex_layout, m_desc_set[i], m_renderer->swapchain_render_targets[0], &pipeline_settings, &m_pipeline[i]);
 
 		tr_create_uniform_buffer(m_renderer, sizeof(shaderUniformBuffer_t), true, &m_uniform_buffers[i]);
 		m_desc_set[i]->descriptors[0].uniform_buffers[0] = m_uniform_buffers[i];
@@ -227,17 +282,13 @@ void polymer_ogl_loadinteraction(void) {
 	}
 	else if(rhiType == RHI_D3D12) {
 #ifdef BUILD_VULKAN
-		if (vkMonolithShaderBufferVertex) {
-			free((void*)vkMonolithShaderBufferVertex);
-			vkMonolithShaderBufferVertex = nullptr;
-		}
-		if (vkMonolithShaderBufferFragment) {
-			free((void*)vkMonolithShaderBufferFragment);
-			vkMonolithShaderBufferFragment = nullptr;
-		}
+		polymerMonolithicShader.Reset();
+		polymerMonolithicShader.vkMonolithShaderBufferVertexSize = kpzbufload2("renderprogs/spirv/buildshader_v.spv", (char**)&polymerMonolithicShader.vkMonolithShaderBufferVertex);
+		polymerMonolithicShader.vkMonolithShaderBufferFragmentSize = kpzbufload2("renderprogs/spirv/buildshader_p.spv", (char**)&polymerMonolithicShader.vkMonolithShaderBufferFragment);
 
-		vkMonolithShaderBufferVertexSize = kpzbufload2("renderprogs/spirv/buildshader_v.spv", (char**)&vkMonolithShaderBufferVertex);
-		vkMonolithShaderBufferFragmentSize = kpzbufload2("renderprogs/spirv/buildshader_p.spv", (char**)&vkMonolithShaderBufferFragment);
+		polymerMonolithicTransShader.Reset();
+		polymerMonolithicTransShader.vkMonolithShaderBufferVertexSize = kpzbufload2("renderprogs/spirv/buildshader_trans33_v.spv", (char**)&polymerMonolithicTransShader.vkMonolithShaderBufferVertex);
+		polymerMonolithicTransShader.vkMonolithShaderBufferFragmentSize = kpzbufload2("renderprogs/spirv/buildshader_trans33_p.spv", (char**)&polymerMonolithicTransShader.vkMonolithShaderBufferFragment);
 #else
 		if (d3d12MonolithShaderBuffer) {
 			free((void*)d3d12MonolithShaderBuffer);

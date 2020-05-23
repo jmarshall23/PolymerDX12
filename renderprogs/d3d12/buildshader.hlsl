@@ -88,5 +88,9 @@ float4 PSMain(VSOutput input) : SV_TARGET
 	float3 texelFar = uTex1.Load(int3(colorIndexFar, curbasepal, 0)).xyz;
 	
 	float3 tileArtColored = lerp(texelNear, texelFar, frac(shadeLookup));
+#ifdef TRANSPARENT
+	return float4(tileArtColored.x, tileArtColored.y, tileArtColored.z, 0.5);
+#else
 	return float4(tileArtColored.x, tileArtColored.y, tileArtColored.z, 1);
+#endif
 }

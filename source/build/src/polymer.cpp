@@ -90,6 +90,8 @@ extern uint32_t frameIdx;
 float4x4 normalProjectionMatrix;
 float4x4 biasedProjectionMatrix;
 
+#define TEST(flags,mask) !!((flags)&(mask))
+
 //Vertex board_vertexes[POLYMER_DX12_MAXVERTS];
 int numBoardVertexes = 0;
 int numGuiVertexes = 0;
@@ -99,9 +101,12 @@ int board_indexes_table[POLYMER_DX12_MAXINDEXES];
 int numBoardIndexes = 0;
 
 #define POLYMER_DX12_STARTSPRITEVERT        (numBoardVertexes + 1)
-#define POLYMER_DX12_STARTSPRITEINDEX       (numBoardIndexes + 1)
+#define POLYMER_DX12_STARTTRANSINDEXES      (numBoardIndexes)
+#define POLYMER_DX12_MAXTRANSINDEXES        180
+#define POLYMER_DX12_STARTSPRITEINDEX       (numBoardIndexes + POLYMER_DX12_MAXTRANSINDEXES)
 int numSpriteVertexes = 0;
 int numSpriteIndxes = 0;
+int numTransparentIndexes = 0;
 
 void polymer_updatesprited3d12(int32_t snum);
 
@@ -1013,6 +1018,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
         viewangle = daang;
         videoEndDrawing();
         currentDrawRoomLayer++;
+        numTransparentIndexes = 0;
         tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]);
         return;
     }
@@ -1036,6 +1042,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
     videoEndDrawing();
     currentDrawRoomLayer++;
     tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]);
+    numTransparentIndexes = 0;
 }
 
 void                polymer_drawmasks(void)
@@ -1253,7 +1260,7 @@ static void         polymer_drawsearchplane(_prplane *plane, GLubyte *oldcolor, 
 
     polymer_setupdiffusemodulation(plane, modulation, data);
 
-    polymer_drawplane(plane);
+    polymer_drawplane(plane, false);
 
     Bmemcpy(plane->material.diffusemodulation, oldcolor, sizeof(GLubyte) * 4);
 }
@@ -1280,7 +1287,7 @@ void                polymer_drawmaskwall(int32_t damaskwallcnt)
         polymer_drawsearchplane(&w->mask, oldcolor, 0x04, (GLubyte *)&maskwall[damaskwallcnt]);
     } else {
         calc_and_apply_fog(fogshade(wal->shade, wal->pal), sec->visibility, get_floor_fogpal(sec));
-        polymer_drawplane(&w->mask);
+        polymer_drawplane(&w->mask, false);
     }
 
 	if (rhiType == RHI_OPENGL) {
@@ -1418,7 +1425,7 @@ void                polymer_drawsprite(int32_t snum)
     if ((!depth || mirrors[depth-1].plane) && !pr_ati_nodepthoffset)
         glEnable(GL_POLYGON_OFFSET_FILL);
 
-    polymer_drawplane(&s->plane);
+    polymer_drawplane(&s->plane, false);
 
     if ((!depth || mirrors[depth-1].plane) && !pr_ati_nodepthoffset)
         glDisable(GL_POLYGON_OFFSET_FILL);
@@ -1852,7 +1859,17 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
 //     }
 
 	if (rhiType == RHI_D3D12) {
-		GL_DrawBuffer(0, numBoardIndexes);
+        GL_BindTexture(NULL, 0, false, false);
+
+        // Draw our level indexes.
+		GL_DrawBuffer(0, numBoardIndexes, false);
+
+        // Draw our transparent indexes.
+        if (numTransparentIndexes > 0)
+        {
+            GL_BindTexture(NULL, 0, true, false);
+            GL_DrawBuffer(numBoardIndexes, numTransparentIndexes, true);
+        }
 	}
 
 	// jmarshall: todo mirrors.
@@ -1932,7 +1949,7 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
             glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
 
             mirrorlist[i].plane->material.mirrormap = prrts[0].color;
-            polymer_drawplane(mirrorlist[i].plane);
+            polymer_drawplane(mirrorlist[i].plane, false);
             mirrorlist[i].plane->material.mirrormap = 0;
 
             i--;
@@ -2124,7 +2141,7 @@ static void         polymer_bucketplane(_prplane* plane)
     }
 }
 
-static void         polymer_drawplane(_prplane* plane)
+static void         polymer_drawplane(_prplane* plane, bool hasAlpha)
 {
     int32_t         materialbits;
 
@@ -2136,8 +2153,15 @@ static void         polymer_drawplane(_prplane* plane)
         }
 
 		int startIndex = plane->indexoffset;
+        int startWriteIndex = startIndex;
 		int numIndexes = plane->numindexes;
-		memcpy(((unsigned char*)prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]->cpu_mapped_address) + (startIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
+
+        if (hasAlpha) {
+            assert(numTransparentIndexes < POLYMER_DX12_MAXTRANSINDEXES);
+            startWriteIndex = POLYMER_DX12_STARTTRANSINDEXES + numTransparentIndexes;
+            numTransparentIndexes += numIndexes;            
+        }
+		memcpy(((unsigned char*)prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]->cpu_mapped_address) + (startWriteIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
 		return;
 	}
 
@@ -2992,7 +3016,7 @@ static void         polymer_drawsector(int16_t sectnum, int32_t domasks)
         else {
             calc_and_apply_fog(fogshade(sec->floorshade, sec->floorpal), sec->visibility,
                 get_floor_fogpal(sec));
-            polymer_drawplane(&s->floor);
+            polymer_drawplane(&s->floor, TEST(sec->floorstat, 384));
         }
     } else if (!domasks && cursectormaskcount && sec->floorstat & 384) {
         // If we just skipped a mask, queue it for later
@@ -3016,7 +3040,7 @@ static void         polymer_drawsector(int16_t sectnum, int32_t domasks)
         else {
             calc_and_apply_fog(fogshade(sec->ceilingshade, sec->ceilingpal), sec->visibility,
                                get_ceiling_fogpal(sec));
-            polymer_drawplane(&s->ceil);
+            polymer_drawplane(&s->ceil, TEST(sec->ceilingstat, 384));
         }
     } else if (!domasks && !queuedmask && cursectormaskcount &&
                (sec->ceilingstat & 384)) {
@@ -3689,7 +3713,7 @@ static void         polymer_drawwall(int16_t sectnum, int16_t wallnum)
             polymer_drawsearchplane(&w->wall, oldcolor, 0x05, (GLubyte *) &wallnum);
         }
         else
-            polymer_drawplane(&w->wall);
+            polymer_drawplane(&w->wall, false);
     }
 
     if ((w->underover & 2) && (!parallaxedceiling || (searchit == 2)))
@@ -3698,7 +3722,7 @@ static void         polymer_drawwall(int16_t sectnum, int16_t wallnum)
             polymer_drawsearchplane(&w->over, oldcolor, 0x00, (GLubyte *) &wallnum);
         }
         else
-            polymer_drawplane(&w->over);
+            polymer_drawplane(&w->over, false);
     }
 
     if ((wall[wallnum].cstat & 32) && (wall[wallnum].nextsector >= 0))
@@ -3707,7 +3731,7 @@ static void         polymer_drawwall(int16_t sectnum, int16_t wallnum)
             polymer_drawsearchplane(&w->mask, oldcolor, 0x04, (GLubyte *) &wallnum);
         }
         else
-            polymer_drawplane(&w->mask);
+            polymer_drawplane(&w->mask, false);
     }
 
     //if (!searchit && (sector[sectnum].ceilingstat & 1) &&
@@ -4154,7 +4178,7 @@ void polymer_updatesprited3d12(int32_t snum) {
 
 	pthtyp* pth = texcache_fetch(tspr->picnum, 0, 0, DAMETH_NOMASK);
 
-	GL_BindTexture(pth->d3dpic, 0);
+	GL_BindTexture(pth->d3dpic, 0, false, false);
 
 	int numIndexes = -1;
 
@@ -4174,7 +4198,7 @@ void polymer_updatesprited3d12(int32_t snum) {
 	}
 	else {
 		numIndexes = sprite->plane.indicescount;
-		GL_DrawBuffer(startIndex, sprite->plane.indicescount);
+		GL_DrawBuffer(startIndex, sprite->plane.indicescount, false);
         polymer_endwriteverts(tspr->picnum, startVertex, sprite->plane.vertcount, startIndex, sprite->plane.indicescount, sprite->plane.material.shadeoffset, sprite->plane.material.visibility, tspr->pal);
 	}
     
@@ -4647,6 +4671,7 @@ static void         polymer_drawartsky(int16_t tilenum, char palnum, int8_t shad
 
 static void         polymer_drawartskyquad(int32_t picnum, int32_t p1, int32_t p2, GLfloat height)
 {
+    GL_BindTexture(NULL, 0, false, false);
 	if (rhiType == RHI_OPENGL)
 	{
 		glBegin(GL_QUADS);
@@ -4770,6 +4795,7 @@ static void         polymer_drawskybox(int16_t tilenum, char palnum, int8_t shad
         }
 		else if (rhiType == RHI_D3D12)
 		{
+            GL_BindTexture(NULL, 0, false, false);
 			GL_DrawBuffer(tilenum, (float*)&skyboxdata[4 * 5 * i], 4);
 		}
 

@@ -52,10 +52,10 @@ void GL_SetProjectionMatrix(float* newProjectionMatrix);
 void GL_SetModelViewToIdentity(void);
 void GL_SetColor(float r, float g, float b, float a);
 void GL_DrawBuffer(int picnum, float* vertexes, int numPoints);
-void GL_DrawBuffer(int startIndex, int numIndexes);
+void GL_DrawBuffer(int startIndex, int numIndexes, bool alphaBlend);
 void GL_EndFrame(void);
-void GL_BindTexture(struct tr_texture* texture, int tmu);
-void GL_BindDescSetForDrawCall(shaderUniformBuffer_t& uniformBuffer, bool depth);
+void GL_BindTexture(struct tr_texture* texture, int tmu, bool trans, bool ui);
+void GL_BindDescSetForDrawCall(shaderUniformBuffer_t& uniformBuffer, bool depth, bool trans);
 void GL_DrawBufferVertex(int startVertex, int numPoints);
 
 #ifdef __cplusplus

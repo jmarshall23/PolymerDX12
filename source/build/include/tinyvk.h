@@ -559,6 +559,9 @@ typedef struct tr_pipeline_settings {
     tr_cull_mode                        cull_mode;
     tr_front_face                       front_face;
     bool                                depth;
+// jmarshall
+    bool                                alphaBlend;
+// jmarshall end
     tr_tessellation_domain_origin       tessellation_domain_origin;
 } tr_pipeline_settings;
 
@@ -4320,14 +4323,28 @@ void tr_internal_vk_create_pipeline(tr_renderer* p_renderer, tr_shader_program* 
         ds.maxDepthBounds                           = 0.0;
 
         TINY_RENDERER_DECLARE_ZERO(VkPipelineColorBlendAttachmentState, cbas);
-        cbas.colorWriteMask                         = 0xf;
-        cbas.blendEnable                            = VK_FALSE;
-        cbas.alphaBlendOp                           = VK_BLEND_OP_ADD;
-        cbas.colorBlendOp                           = VK_BLEND_OP_ADD;
-        cbas.srcColorBlendFactor                    = VK_BLEND_FACTOR_ZERO;
-        cbas.dstColorBlendFactor                    = VK_BLEND_FACTOR_ZERO;
-        cbas.srcAlphaBlendFactor                    = VK_BLEND_FACTOR_ZERO;
-        cbas.dstAlphaBlendFactor                    = VK_BLEND_FACTOR_ZERO;
+// jmarshall - added alphaBlend
+        if (p_pipeline_settings->alphaBlend) {
+            cbas.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            cbas.blendEnable = VK_TRUE;
+            cbas.alphaBlendOp = VK_BLEND_OP_ADD;
+            cbas.colorBlendOp = VK_BLEND_OP_ADD;
+            cbas.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            cbas.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            cbas.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            cbas.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        }
+        else {
+			cbas.colorWriteMask = 0xf;
+			cbas.blendEnable = VK_FALSE;
+			cbas.alphaBlendOp = VK_BLEND_OP_ADD;
+			cbas.colorBlendOp = VK_BLEND_OP_ADD;
+			cbas.srcColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+			cbas.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+			cbas.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+			cbas.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        }
+// jmarshall end
         TINY_RENDERER_DECLARE_ZERO(VkPipelineColorBlendStateCreateInfo, cb);
         cb.sType                                    = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
         cb.pNext                                    = NULL;

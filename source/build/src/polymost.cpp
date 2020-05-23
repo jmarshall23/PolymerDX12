@@ -408,7 +408,7 @@ void gltexapplyprops(void)
 				bind_2d_texture(pth->glpic, filter);
 			}
 			else if (rhiType == RHI_D3D12) {
-				GL_BindTexture(pth->d3dpic, 0);
+				GL_BindTexture(pth->d3dpic, 0, false, true);
 			}
 
 			if (r_fullbrights && pth->flags & PTH_HASFULLBRIGHT) {
@@ -416,7 +416,7 @@ void gltexapplyprops(void)
 					bind_2d_texture(pth->ofb->glpic, filter);
 				}
 				else if (rhiType == RHI_D3D12) {
-					GL_BindTexture(pth->ofb->d3dpic, 0);
+					GL_BindTexture(pth->ofb->d3dpic, 0, false, true);
 				}
 			}
 		}
@@ -2220,7 +2220,7 @@ static void gloadtile_art_indexed(int32_t dapic, int32_t dameth, pthtyp *pth, in
 			uploadtextureindexed(doalloc, { (int32_t)tile.rect.u, (int32_t)tile.rect.v }, siz, waloff[dapic]);
         }
 		else if (rhiType == RHI_D3D12) {
-			GL_BindTexture(pth->d3dpic, 0);
+			GL_BindTexture(pth->d3dpic, 0, false, true);
 		}        
     }
     else
@@ -9454,7 +9454,7 @@ void polymost_dorotatesprite(int32_t sx, int32_t sy, int32_t z, int16_t a, int16
 // jmarshall - ensure we have a albedo texture bound here
 		if (rhiType == RHI_D3D12) {
 			pthtyp const* const pth = our_texcache_fetch(DAMETH_NOMASK | (videoGetRenderMode() == REND_POLYMOST && r_useindexedcolortextures ? PTH_INDEXED : 0));
-			GL_BindTexture(pth->d3dpic, 0);
+			GL_BindTexture(pth->d3dpic, 0, false, true);
 		}
 // jmarshall end
         pow2xsplit = 0; polymost_drawpoly(fpxy,n,method);

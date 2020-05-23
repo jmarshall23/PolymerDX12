@@ -521,7 +521,7 @@ static void         polymer_displayrooms(int16_t sectnum);
 static void         polymer_emptybuckets(void);
 static _prbucket*   polymer_findbucket(int16_t tilenum, char pal);
 static void         polymer_bucketplane(_prplane* plane);
-static void         polymer_drawplane(_prplane* plane);
+static void         polymer_drawplane(_prplane* plane, bool hasAlpha);
 static inline void  polymer_inb4mirror(_prvert* buffer, const GLfloat* plane);
 static void         polymer_animatesprites(void);
 static void         polymer_freeboard(void);

@@ -18,6 +18,7 @@ tr_sampler* m_linear_sampler;
 extern tr_renderer* m_renderer;
 
 extern int numFrameDrawCalls;
+extern int numFrameTransDrawCalls;
 extern int numFrameUIDrawCalls;
 extern int numSpriteVertexes;
 extern int numSpriteIndxes;
@@ -69,7 +70,7 @@ void GL_Init(void) {
 	uint64_t indexDataSize = sizeof(uint32_t) * POLYMER_DX12_MAXINDEXES;
 
 	tr_create_vertex_buffer(m_renderer, vertexDataSize, true, vertexStride, &prd3d12_vertex_buffer);
-	for (int i = 0; i < 3; i++) {		
+	for (int i = 0; i < MAX_DRAWROOM_LAYERS; i++) {
 		for (int d = 0; d < 3; d++)
 		{
 			tr_create_index_buffer(m_renderer, indexDataSize, true, tr_index_type_uint32, &prd3d12_index_buffer[i][d]);
@@ -160,23 +161,21 @@ void GL_DrawBuffer(int picnum, float * drawpolyVerts, int numPoints) {
 	GL_MultiplyMatrix(modelview_matrix, projection_matrix, uniformBuffer.mvp);
 	//memcpy(uniformBuffer.worldbuffer, modelview_matrix, sizeof(float) * 16);
 
-	GL_BindDescSetForDrawCall(uniformBuffer, false);	
+	GL_BindDescSetForDrawCall(uniformBuffer, false, false);
 
 	tr_cmd_draw(graphicscmd, numPoints, startVertex);
-	numFrameDrawCalls++;
 }
 
 
-void GL_DrawBuffer(int startIndex, int numIndexes) {
+void GL_DrawBuffer(int startIndex, int numIndexes, bool alphaBlend) {
 	shaderUniformBuffer_t uniformBuffer;
 	GL_MultiplyMatrix(modelview_matrix, projection_matrix, uniformBuffer.mvp);
 	//memcpy(uniformBuffer.worldbuffer, modelview_matrix, sizeof(float) * 16);
-	GL_BindDescSetForDrawCall(uniformBuffer, true);	
+	GL_BindDescSetForDrawCall(uniformBuffer, true, alphaBlend);
 
 	tr_cmd_draw_indexed(graphicscmd, numIndexes, startIndex);
 
-	//tr_cmd_bind_index_buffer(graphicscmd, prd3d12_null_index_buffer);
-	numFrameDrawCalls++;
+	//tr_cmd_bind_index_buffer(graphicscmd, prd3d12_null_index_buffer);	
 }
 
 
@@ -184,12 +183,11 @@ void GL_DrawBufferVertex(int startVertex, int numPoints) {
 	shaderUniformBuffer_t uniformBuffer;
 	GL_MultiplyMatrix(modelview_matrix, projection_matrix, uniformBuffer.mvp);
 	//memcpy(uniformBuffer.worldbuffer, modelview_matrix, sizeof(float) * 16);
-	GL_BindDescSetForDrawCall(uniformBuffer, true);
+	GL_BindDescSetForDrawCall(uniformBuffer, true, false);
 
 	tr_cmd_draw(graphicscmd, numPoints, startVertex);
 
 	//tr_cmd_bind_index_buffer(graphicscmd, prd3d12_null_index_buffer);
-	numFrameDrawCalls++;
 }
 
 
@@ -197,6 +195,7 @@ void GL_EndFrame(void) {
 	currentDrawRoomLayer = 0;
 	numFrameDrawCalls = 0;
 	numGuiVertexes = 0;
+	numFrameTransDrawCalls = 0;
 	numSpriteVertexes = 0;
 	numFrameUIDrawCalls = 0;
 	numSpriteIndxes = 0;
