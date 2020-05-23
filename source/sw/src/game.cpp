@@ -52,6 +52,7 @@ Things required to make savegames work:
 #include "panel.h"
 #include "game.h"
 #include "interp.h"
+#include "interpso.h"
 #include "tags.h"
 #include "sector.h"
 #include "sprite.h"
@@ -126,12 +127,11 @@ SWBOOL Global_PLock = FALSE;
 #endif
 
 // 12 was original source release. For future releases increment by two.
-int GameVersion = 15;
+int GameVersion = 17;
 
 char DemoText[3][64];
 int DemoTextYstart = 0;
 
-SWBOOL DoubleInitAWE32 = FALSE;
 int Follow_posx=0,Follow_posy=0;
 
 SWBOOL NoMeters = FALSE;
@@ -145,7 +145,6 @@ SWBOOL DemoModeMenuInit = FALSE;
 SWBOOL FinishAnim = 0;
 SWBOOL ShortGameMode = FALSE;
 SWBOOL ReloadPrompt = FALSE;
-SWBOOL ReloadPromptMode = FALSE;
 SWBOOL NewGame = TRUE;
 SWBOOL InMenuLevel = FALSE;
 SWBOOL LoadGameOutsideMoveLoop = FALSE;
@@ -166,14 +165,12 @@ short HelpPage = 0;
 short HelpPagePic[] = { 5115, 5116, 5117 };
 SWBOOL InputMode = FALSE;
 SWBOOL MessageInput = FALSE;
-extern SWBOOL GamePaused;
 short screenpeek = 0;
 SWBOOL NoDemoStartup = FALSE;
 SWBOOL FirstTimeIntoGame;
 extern uint8_t RedBookSong[40];
 
 SWBOOL PedanticMode;
-SWBOOL InterpolateSectObj;
 
 SWBOOL BorderAdjust = TRUE;
 SWBOOL LocationInfo = 0;
@@ -211,6 +208,7 @@ const GAME_SET gs_defaults =
     FALSE, // auto run
     TRUE, // crosshair
     TRUE, // auto aim
+    TRUE, // interpolate sector objects
     TRUE, // messages
     TRUE, // fx on
     TRUE, // Music on
@@ -238,6 +236,7 @@ const GAME_SET gs_defaults =
     "Track??", // waveform track name
     FALSE,
     TRUE,
+    90, // FOV
 };
 GAME_SET gs;
 
@@ -1317,7 +1316,6 @@ void InitLevelGlobals(void)
     memset(BossSpriteNum,-1,sizeof(BossSpriteNum));
 
     PedanticMode = (DemoPlaying || DemoRecording || DemoEdit || DemoMode);
-    InterpolateSectObj = !CommEnabled && !PedanticMode;
 }
 
 void InitLevelGlobals2(void)
@@ -3322,6 +3320,10 @@ RunLevel(void)
             ExitLevel = FALSE;
             break;
         }
+
+        timerUpdateClock();
+        while (ready2send && (totalclock >= ototalclock + synctics))
+            UpdateInputs();
     }
 
     ready2send = 0;
@@ -3619,6 +3621,26 @@ int32_t app_main(int32_t argc, char const * const * argv)
 
     SW_ExtInit();
 
+    for (cnt = 1; cnt < argc; ++cnt)
+    {
+        char const * arg = argv[cnt];
+        if (*arg != '/' && *arg != '-')
+            continue;
+        ++arg;
+
+        if (Bstrncasecmp(arg, "j", 1) == 0 && !SW_SHAREWARE)
+        {
+            if (strlen(arg) > 1)
+            {
+                const char * dir = arg+1;
+                int err = addsearchpath(dir);
+                if (err < 0)
+                    buildprintf("Failed adding %s for game data: %s\n", dir,
+                                err==-1 ? "not a directory" : "no such directory");
+            }
+        }
+    }
+
     // hackish since SW's init order is a bit different right now
     if (G_CheckCmdSwitch(argc, argv, "-addon0"))
     {
@@ -3646,6 +3668,7 @@ int32_t app_main(int32_t argc, char const * const * argv)
     }
 
     SW_ScanGroups();
+
 #ifndef _DEBUG
     wm_msgbox("Pre-Release Software Warning", "%s is not ready for public use. Proceed with caution!", AppProperName);
 #endif
@@ -4756,7 +4779,7 @@ FunctionKeys(PLAYERp pp)
 
 void PauseKey(PLAYERp pp)
 {
-    extern SWBOOL GamePaused,CheatInputMode;
+    extern SWBOOL CheatInputMode;
 
     if (KEY_PRESSED(sc_Pause) && !CommEnabled && !InputMode && !UsingMenus && !CheatInputMode && !ConPanel)
     {
@@ -5008,8 +5031,6 @@ void GetConInput(void)
 
 void GetHelpInput(PLAYERp pp)
 {
-    extern SWBOOL GamePaused;
-
     if (KEY_PRESSED(KEYSC_ALT) || KEY_PRESSED(KEYSC_RALT))
         return;
 
@@ -5293,7 +5314,7 @@ getinput(SW_PACKET *loc, SWBOOL tied)
     }
     else
     {
-        if (BUTTON(gamefunc_Turn_Left))
+        if (BUTTON(gamefunc_Turn_Left) || (BUTTON(gamefunc_Strafe_Left) && pp->sop))
         {
             turnheldtime += synctics;
             if (PedanticMode)
@@ -5306,7 +5327,7 @@ getinput(SW_PACKET *loc, SWBOOL tied)
             else
                 q16angvel = fix16_ssub(q16angvel, fix16_from_float(scaleAdjustmentToInterval((turnheldtime >= TURBOTURNTIME) ? turnamount : PREAMBLETURN)));
         }
-        else if (BUTTON(gamefunc_Turn_Right))
+        else if (BUTTON(gamefunc_Turn_Right) || (BUTTON(gamefunc_Strafe_Right) && pp->sop))
         {
             turnheldtime += synctics;
             if (PedanticMode)
@@ -5349,18 +5370,23 @@ getinput(SW_PACKET *loc, SWBOOL tied)
     q16angvel = fix16_clamp(q16angvel, -fix16_from_int(MAXANGVEL), fix16_from_int(MAXANGVEL));
     q16aimvel = fix16_clamp(q16aimvel, -fix16_from_int(MAXHORIZVEL), fix16_from_int(MAXHORIZVEL));
 
+    void DoPlayerTeleportPause(PLAYERp pp);
     if (PedanticMode)
     {
         q16angvel = fix16_floor(q16angvel);
         q16aimvel = fix16_floor(q16aimvel);
     }
-    else if (!TEST(pp->Flags, PF_DEAD))
+    else
     {
+        fix16_t prevcamq16ang = pp->camq16ang, prevcamq16horiz = pp->camq16horiz;
         void DoPlayerTurn(PLAYERp pp, fix16_t *pq16ang, fix16_t q16angvel);
         void DoPlayerHorizon(PLAYERp pp, fix16_t *pq16horiz, fix16_t q16aimvel);
-        if (!TEST(pp->Flags, PF_CLIMBING))
+        if (TEST(pp->Flags2, PF2_INPUT_CAN_TURN))
             DoPlayerTurn(pp, &pp->camq16ang, q16angvel);
-        DoPlayerHorizon(pp, &pp->camq16horiz, q16aimvel);
+        if (TEST(pp->Flags2, PF2_INPUT_CAN_AIM))
+            DoPlayerHorizon(pp, &pp->camq16horiz, q16aimvel);
+        pp->oq16ang += pp->camq16ang - prevcamq16ang;
+        pp->oq16horiz += pp->camq16horiz - prevcamq16horiz;
     }
 
     loc->vel += vel;
@@ -5589,7 +5615,8 @@ getinput(SW_PACKET *loc, SWBOOL tied)
         SinglePlayInput(pp);
 #endif
 
-    FunctionKeys(pp);
+    if (!tied)
+        FunctionKeys(pp);
 
     if (BUTTON(gamefunc_Toggle_Crosshair))
     {

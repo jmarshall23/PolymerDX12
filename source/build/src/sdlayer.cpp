@@ -795,7 +795,10 @@ void uninitsystem(void)
     if (rhiType == RHI_OPENGL) {
 # if SDL_MAJOR_VERSION >= 2
         SDL_GL_UnloadLibrary();
+# if SDL_MAJOR_VERSION >= 2
+    SDL_GL_UnloadLibrary();
 # endif
+#endif
 # ifdef POLYMER
         unloadglulibrary();
 # endif

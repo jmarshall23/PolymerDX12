@@ -8245,6 +8245,13 @@ ACTOR_STATIC void G_MoveEffectors(void)   //STATNUM 3
                     break;
                 }
 #endif
+                pWall->cstat &= (255-32);
+                pWall->cstat |= 16;
+                if (pWall->nextwall >= 0)
+                {
+                    wall[pWall->nextwall].cstat &= (255-32);
+                    wall[pWall->nextwall].cstat |= 16;
+                }
 
                 pWall->cstat &= (255-32);
                 pWall->cstat |= 16;
