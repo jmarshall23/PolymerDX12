@@ -107,6 +107,7 @@ int numBoardIndexes = 0;
 int numSpriteVertexes = 0;
 int numSpriteIndxes = 0;
 int numTransparentIndexes = 0;
+int numNormalIndexes = 0;
 
 void polymer_updatesprited3d12(int32_t snum);
 
@@ -805,7 +806,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
     pthtyp*         pth;
 
     tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]);
-    memset(prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]->cpu_mapped_address, 0, sizeof(int) * POLYMER_DX12_MAXINDEXES);
+    //memset(prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]->cpu_mapped_address, 0, sizeof(int) * POLYMER_DX12_MAXINDEXES);
 
     if (videoGetRenderMode() == REND_CLASSIC) return;
 
@@ -1019,6 +1020,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
         videoEndDrawing();
         currentDrawRoomLayer++;
         numTransparentIndexes = 0;
+        numNormalIndexes = 0;
         tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]);
         return;
     }
@@ -1043,6 +1045,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
     currentDrawRoomLayer++;
     tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]);
     numTransparentIndexes = 0;
+    numNormalIndexes = 0;
 }
 
 void                polymer_drawmasks(void)
@@ -1862,7 +1865,7 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
         GL_BindTexture(NULL, 0, false, false);
 
         // Draw our level indexes.
-		GL_DrawBuffer(0, numBoardIndexes, false);
+		GL_DrawBuffer(0, numNormalIndexes, false);
 
         // Draw our transparent indexes.
         if (numTransparentIndexes > 0)
@@ -2153,13 +2156,17 @@ static void         polymer_drawplane(_prplane* plane, bool hasAlpha)
         }
 
 		int startIndex = plane->indexoffset;
-        int startWriteIndex = startIndex;
+        int startWriteIndex = -1;
 		int numIndexes = plane->numindexes;
 
         if (hasAlpha) {
             assert(numTransparentIndexes < POLYMER_DX12_MAXTRANSINDEXES);
             startWriteIndex = POLYMER_DX12_STARTTRANSINDEXES + numTransparentIndexes;
             numTransparentIndexes += numIndexes;            
+        }
+        else {
+            startWriteIndex = numNormalIndexes;
+            numNormalIndexes += numIndexes;
         }
 		memcpy(((unsigned char*)prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]->cpu_mapped_address) + (startWriteIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
 		return;
