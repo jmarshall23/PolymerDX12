@@ -58,6 +58,9 @@ float4 PSMain(VSOutput input) : SV_TARGET
 	
 	int palette=int(palint[0]);
     int curbasepal=int(palint[1]);
+	int paletteExtraBytes=int(palint[2]);
+
+	palette = palette + paletteExtraBytes;
 	
 	float worldPositonLength = input.worldPositon.x;
 	float shadeLookup = (worldPositonLength / 1.07 * visibility);

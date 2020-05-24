@@ -102,7 +102,7 @@ int numBoardIndexes = 0;
 
 #define POLYMER_DX12_STARTSPRITEVERT        (numBoardVertexes + 1)
 #define POLYMER_DX12_STARTTRANSINDEXES      (numBoardIndexes)
-#define POLYMER_DX12_MAXTRANSINDEXES        180
+#define POLYMER_DX12_MAXTRANSINDEXES        360
 #define POLYMER_DX12_STARTSPRITEINDEX       (numBoardIndexes + POLYMER_DX12_MAXTRANSINDEXES)
 int numSpriteVertexes = 0;
 int numSpriteIndxes = 0;
@@ -638,8 +638,16 @@ void polymer_endwriteverts(int picnum, int startVertex, int numPoints, int start
 	float TileRectInfo[4];
 	polymost_gettileinfo(picnum, TileRectInfo[0], TileRectInfo[1], TileRectInfo[2], TileRectInfo[3]);
 
-	assert(palette < 60);
+	assert(palette < 166);
 	assert(curbasepal < 60);
+
+// Ion Fury extra palette support.
+    int paletteExtraBytes = 0;
+    if(palette >= 62) {
+        paletteExtraBytes = palette - 62;
+        palette = 62;
+    }
+// end ion fury
 
     Vertex* vertex = polymer_beginwriteverts(startVertex);
 
@@ -650,7 +658,7 @@ void polymer_endwriteverts(int picnum, int startVertex, int numPoints, int start
         vertex->TileRect[3] = TileRectInfo[3];
         vertex->info[0] = shade;
         vertex->info[1] = visibility;
-        vertex->info[2] = packint(palette, curbasepal, 0, 0);
+        vertex->info[2] = packint(palette, curbasepal, paletteExtraBytes, 0);
 	}
 
 	//memcpy(((unsigned char*)prd3d12_vertex_buffer->cpu_mapped_address) + (startVertex * sizeof(Vertex)), &board_vertexes[startVertex], numPoints * sizeof(Vertex));
@@ -1454,6 +1462,9 @@ void                polymer_setanimatesprites(animatespritesptr animatesprites, 
 int16_t             polymer_addlight(_prlight* light)
 {
     int32_t         lighti;
+
+    if (rhiType != RHI_OPENGL)
+        return -1;
 
     if (lightcount >= PR_MAXLIGHTS || light->priority > pr_maxlightpriority || !pr_lighting)
         return -1;

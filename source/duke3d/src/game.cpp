@@ -718,6 +718,9 @@ static void G_ClearGotMirror()
 #ifdef USE_OPENGL
 static void G_ReadGLFrame(void)
 {
+    if (rhiType != RHI_OPENGL)
+        return;
+
     // Save OpenGL screenshot with Duke3D palette
     // NOTE: maybe need to move this to the engine...
     

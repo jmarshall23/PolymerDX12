@@ -1969,7 +1969,7 @@ void videoShowFrame(int32_t w)
 
 			assert(!d3d_fence_haswork);
 
-            TempDrawFPSHack();
+           // TempDrawFPSHack();
 
 			tr_cmd_end_render(graphicscmd);
 			tr_cmd_render_target_transition(graphicscmd, render_target, tr_texture_usage_color_attachment, tr_texture_usage_present);
