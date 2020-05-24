@@ -44,7 +44,7 @@ extern "C" {
 //
 //****************************************************************************
 
-#define APPNAME "VoidSW"
+#define APPNAME "VoidSW(Vulkan Render)"
 #ifndef APPBASENAME
 #define APPBASENAME         "voidsw"
 #endif
