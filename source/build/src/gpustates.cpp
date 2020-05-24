@@ -70,10 +70,10 @@ void GL_Init(void) {
 	uint64_t indexDataSize = sizeof(uint32_t) * POLYMER_DX12_MAXINDEXES;
 
 	tr_create_vertex_buffer(m_renderer, vertexDataSize, true, vertexStride, &prd3d12_vertex_buffer);
-	for (int i = 0; i < MAX_DRAWROOM_LAYERS; i++) {
-		for (int d = 0; d < 3; d++)
+	for (int d = 0; d < 3; d++)
+		for (int i = 0; i < MAX_DRAWROOM_LAYERS; i++) {
 		{
-			tr_create_index_buffer(m_renderer, indexDataSize, true, tr_index_type_uint32, &prd3d12_index_buffer[i][d]);
+			tr_create_index_buffer(m_renderer, indexDataSize, true, tr_index_type_uint32, &prd3d12_index_buffer[d][i]);
 		}
 	}
 
