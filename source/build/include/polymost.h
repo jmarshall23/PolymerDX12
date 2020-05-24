@@ -280,6 +280,9 @@ static FORCE_INLINE int polymost_want_npotytex(int32_t dameth, int32_t ysiz)
         polymost_is_npotmode() && (dameth&DAMETH_WALL) && check_nonpow2(ysiz);
 }
 
+void polymost_updatepicnum(int picnum);
+void polymost_delayedupdatepic(void);
+
 // pthtyp pth->flags bits
 enum pthtyp_flags {
     PTH_CLAMPED = 1,

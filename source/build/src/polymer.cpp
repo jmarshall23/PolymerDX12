@@ -1552,6 +1552,21 @@ void                polymer_invalidatelights(void)
     while (i--);
 }
 
+void polymer_invalidateartmap(int32_t tilenum)
+{
+	if (rhiType == RHI_OPENGL)
+	{
+		if (prartmaps[tilenum])
+		{
+			glDeleteTextures(1, &prartmaps[tilenum]);
+			prartmaps[tilenum] = 0;
+		}
+		return;
+	}
+
+    polymost_updatepicnum(tilenum);
+}
+
 void                polymer_texinvalidate(void)
 {
     int32_t         i;
@@ -2402,7 +2417,10 @@ static void         polymer_freeboard(void)
     i = 0;
     while (i < MAXTILES)
     {
-        polymer_invalidateartmap(i);
+        if (rhiType == RHI_OPENGL)
+        {
+            polymer_invalidateartmap(i);
+        }
         i++;
     }
 

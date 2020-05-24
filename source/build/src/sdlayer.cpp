@@ -1967,6 +1967,9 @@ void videoShowFrame(int32_t w)
 				Sleep(1);
 			}
 
+            // Now that the previous frame is done, upload any delayed pic updates.
+            polymost_delayedupdatepic();
+
 			assert(!d3d_fence_haswork);
 
            // TempDrawFPSHack();

@@ -45,6 +45,10 @@ int32_t wallOcclusionInfo[MAXWALLS];
 bool polymostOcclusionGatherOnly = false;
 
 extern tr_renderer* m_renderer;
+Tile updatePicTileList[MAXTILES];
+int updatePicList[MAXTILES];
+int numPicsToUpdate = 0;
+
 
 static float dxb1[MAXWALLSB], dxb2[MAXWALLSB];
 
@@ -977,6 +981,54 @@ static void polymost_bindPth(pthtyp const * const pPth)
     glBindTexture(GL_TEXTURE_2D, pPth->glpic);
 }
 
+void polymost_delayedupdatepic(void) {
+	// Map the memory for updates
+	VkResult vk_res = vkMapMemory(m_renderer->vk_device, d3d12tilesheets[0]->vk_memory, 0, VK_WHOLE_SIZE, 0, &(d3d12tilesheets[0]->cpu_mapped_address));
+	assert(VK_SUCCESS == vk_res);
+
+    for (int z = 0; z < numPicsToUpdate; z++)
+    {
+        Tile tile = updatePicTileList[z];
+        int picnum = updatePicList[z];
+
+        // byte* pic = (byte*)Xmalloc(tile.rect.width * tile.rect.height * sizeof(byte));
+
+        for (bssize_t y = 0; y < tile.rect.height; y++)
+        {
+            int32_t y2 = (y < tile.rect.height) ? y : y - tile.rect.height;
+
+            for (bssize_t x = 0; x < tile.rect.width; x++)
+            {
+                int32_t dacol;
+                int32_t x2 = (x < tile.rect.width) ? x : x - tile.rect.width;
+
+                dacol = *(char*)(waloff[picnum] + x2 * tile.rect.height + y2);
+
+                int destPos = (tilesheetSize * (y + (tile.rect.v))) + (x + (tile.rect.u));
+                ((unsigned char*)d3d12tilesheets[tile.tilesheetID]->cpu_mapped_address)[destPos] = dacol;
+            }
+        }
+    }
+
+	// We're done with it.
+	vkUnmapMemory(m_renderer->vk_device, d3d12tilesheets[0]->vk_memory);
+
+    numPicsToUpdate = 0;
+}
+
+
+void polymost_updatepicnum(int picnum) {
+	tilepacker_getTile(picnum, &updatePicTileList[numPicsToUpdate]);
+
+	if (updatePicTileList[numPicsToUpdate].rect.width == 0 || updatePicTileList[numPicsToUpdate].rect.height == 0 || waloff[picnum] == 0) {
+        return;
+	}
+
+    updatePicList[numPicsToUpdate] = picnum;
+
+    numPicsToUpdate++;   
+}
+
 // one-time initialization of OpenGL for polymost
 void polymost_glinit()
 {
@@ -1006,7 +1058,7 @@ void polymost_glinit()
 		}
 		for (uint32_t i = 0; i < numTilesheets; ++i)
 		{
-			tr_create_texture_2d(m_renderer, tilesheetSize, tilesheetSize, tr_sample_count_1, tr_format_r8_unorm, tr_max_mip_levels, NULL, false, tr_texture_usage_sampled_image, &d3d12tilesheets[i]);
+			tr_create_texture_2d(m_renderer, tilesheetSize, tilesheetSize, tr_sample_count_1, tr_format_r8_unorm, tr_max_mip_levels, NULL, true, tr_texture_usage_sampled_image, &d3d12tilesheets[i]);
 		}
 		unsigned char* picatlas[MAXTILESHEETS];
 

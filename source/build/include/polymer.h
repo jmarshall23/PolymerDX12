@@ -490,7 +490,6 @@ void                polymer_texinvalidate(void);
 void                polymer_definehighpalookup(char basepalnum, char palnum, char *data);
 int32_t             polymer_havehighpalookup(int32_t basepalnum, int32_t palnum);
 
-
 extern _prsprite    *prsprites[MAXSPRITES];
 static inline void polymer_invalidatesprite(int32_t i)
 {
@@ -499,14 +498,7 @@ static inline void polymer_invalidatesprite(int32_t i)
 }
 
 extern GLuint       prartmaps[MAXTILES];
-static inline void polymer_invalidateartmap(int32_t tilenum)
-{
-    if (prartmaps[tilenum])
-    {
-        glDeleteTextures(1, &prartmaps[tilenum]);
-        prartmaps[tilenum] = 0;
-    }
-}
+void polymer_invalidateartmap(int32_t tilenum);
 
 // Compare with eligible_for_tileshades()
 static inline int32_t polymer_eligible_for_artmap(int32_t tilenum, const pthtyp *pth)

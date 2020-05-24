@@ -3931,11 +3931,12 @@ void tr_internal_vk_create_texture(tr_renderer* p_renderer, tr_texture* p_textur
 
         vk_res = vkBindImageMemory(p_renderer->vk_device, p_texture->vk_image, p_texture->vk_memory, 0);
         assert(VK_SUCCESS == vk_res);
-
-        if (p_texture->host_visible) {
-            vk_res = vkMapMemory(p_renderer->vk_device, p_texture->vk_memory, 0, VK_WHOLE_SIZE, 0, &(p_texture->cpu_mapped_address));
-            assert(VK_SUCCESS == vk_res);
-        }
+// jmarshall - we are not going to leave this mapped.
+        //if (p_texture->host_visible) {
+        //    vk_res = vkMapMemory(p_renderer->vk_device, p_texture->vk_memory, 0, VK_WHOLE_SIZE, 0, &(p_texture->cpu_mapped_address));
+        //    assert(VK_SUCCESS == vk_res);
+        //}
+// jmarshall end
 
         p_texture->owns_image = true;
     }
