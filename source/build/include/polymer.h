@@ -14,9 +14,7 @@
 # include "polymost.h"
 # include "pragmas.h"
 
-#define POLYMER_DX12_MAXPOLYVERTS            70000
-#define POLYMER_DX12_MAXLEVELVERTS           150000
-#define POLYMER_DX12_MAXVERTS                POLYMER_DX12_MAXLEVELVERTS + POLYMER_DX12_MAXPOLYVERTS
+#define POLYMER_DX12_MAXVERTS                150000
 #define POLYMER_DX12_MAXINDEXES              POLYMER_DX12_MAXVERTS * 3
 
 struct Vertex {

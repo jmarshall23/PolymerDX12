@@ -116,7 +116,7 @@ void GL_DrawBuffer(int picnum, float * drawpolyVerts, int numPoints) {
 		TileRectInfo[3] = 0;
 	}
 
-	int startVertex = POLYMER_DX12_MAXLEVELVERTS + numGuiVertexes;
+	int startVertex = numBoardVertexes + numSpriteVertexes + numGuiVertexes;
 	uint32_t quadindices[6] = { 0, 1, 2, 3, 2, 0 };
 
 	if(numPoints == 6) {
