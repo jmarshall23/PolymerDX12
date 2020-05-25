@@ -22,6 +22,7 @@ extern int numFrameDrawCalls;
 extern int numFrameTransDrawCalls;
 extern int numFrameUIDrawCalls;
 extern int numSpriteVertexes;
+extern int numFrameFlipedWindingDrawCalls;
 extern int numSpriteIndxes;
 
 extern bool shouldRenderSky;
@@ -198,6 +199,7 @@ void GL_EndFrame(void) {
 	numGuiVertexes = 0;
 	numFrameTransDrawCalls = 0;
 	numSpriteVertexes = 0;
+	numFrameFlipedWindingDrawCalls = 0;
 	numFrameUIDrawCalls = 0;
 	numSpriteIndxes = 0;
 	shouldRenderSky = true;

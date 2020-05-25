@@ -47,17 +47,21 @@ struct buildShader_t {
 buildShader_t polymerMonolithicShader;
 buildShader_t polymerMonolithicTransShader;
 
-#define POLYMER_DX12_MAXTRANSCALLS				  50
 #define POLYMER_DX12_MAXDRAWCALLS				4000
-#define POLYMER_DX12_MAXUIDRAWCALLS				 600
 
-#define POLYMER_DX12_NONTRANSDRAWCALL			POLYMER_DX12_MAXTRANSCALLS
-#define POLYMER_DX12_UIDRAWCALL					(POLYMER_DX12_MAXDRAWCALLS - POLYMER_DX12_MAXUIDRAWCALLS)
+enum polymerDescriptorSetType_t {
+	DX12_DESCRIPTORSET_BACKFACE = 0,
+	DX12_DESCRIPTORSET_FRONTFACE,
+	DX12_DESCRIPTORSET_UI,
+	DX12_DESCRIPTORSET_TRANS,
+	DX12_DESCRIPTORSET_NUMTYPES
+};
 
-tr_descriptor_set* m_desc_set[POLYMER_DX12_MAXDRAWCALLS];
-tr_pipeline*	   m_pipeline[POLYMER_DX12_MAXDRAWCALLS];
-tr_buffer*		   m_uniform_buffers[POLYMER_DX12_MAXDRAWCALLS];
+tr_descriptor_set* m_desc_set[DX12_DESCRIPTORSET_NUMTYPES][POLYMER_DX12_MAXDRAWCALLS];
+tr_pipeline*	   m_pipeline[DX12_DESCRIPTORSET_NUMTYPES][POLYMER_DX12_MAXDRAWCALLS];
+tr_buffer*		   m_uniform_buffers[DX12_DESCRIPTORSET_NUMTYPES][POLYMER_DX12_MAXDRAWCALLS];
 int numFrameDrawCalls = 0;
+int numFrameFlipedWindingDrawCalls = 0;
 int numFrameTransDrawCalls = 0;
 int numFrameUIDrawCalls = 0;
 
@@ -71,18 +75,29 @@ void GL_BindTexture(struct tr_texture *texture, int tmu, bool trans, bool ui) {
 	extern tr_texture* basePaletteTexture;
 	extern tr_texture* lookupPaletteTexture;
 
+	polymerDescriptorSetType_t descriptorType = DX12_DESCRIPTORSET_BACKFACE;
+
 	int drawCall = -1;
 	if(ui)
 	{
-		drawCall = POLYMER_DX12_UIDRAWCALL + numFrameUIDrawCalls;
+		drawCall = numFrameUIDrawCalls;
+		descriptorType = DX12_DESCRIPTORSET_UI;
 	}
 	else
 	{
 		if (trans) {
 			drawCall = numFrameTransDrawCalls;
+			descriptorType = DX12_DESCRIPTORSET_TRANS;
 		}
 		else {
-			drawCall = POLYMER_DX12_MAXTRANSCALLS + numFrameDrawCalls;
+			if (inpreparemirror) {
+				descriptorType = DX12_DESCRIPTORSET_FRONTFACE;
+				drawCall = numFrameFlipedWindingDrawCalls;
+			}
+			else {
+				descriptorType = DX12_DESCRIPTORSET_BACKFACE;
+				drawCall = numFrameDrawCalls;
+			}
 		}
 	}
 
@@ -90,16 +105,16 @@ void GL_BindTexture(struct tr_texture *texture, int tmu, bool trans, bool ui) {
 		texture = GetTileSheet(0);
 	}
 
-	if (m_desc_set[drawCall]->descriptors[1].textures[0] != NULL && texture != NULL)
+	if (m_desc_set[descriptorType][drawCall]->descriptors[1].textures[0] != NULL && texture != NULL)
 	{
-		if (m_desc_set[drawCall]->descriptors[1].textures[0] == texture)
+		if (m_desc_set[descriptorType][drawCall]->descriptors[1].textures[0] == texture)
 			return;
 	}
 
-	m_desc_set[drawCall]->descriptors[1].textures[0] = texture;
-	m_desc_set[drawCall]->descriptors[2].textures[0] = basePaletteTexture;
-	m_desc_set[drawCall]->descriptors[3].textures[0] = lookupPaletteTexture;
-	tr_update_descriptor_set(m_renderer, m_desc_set[drawCall]);
+	m_desc_set[descriptorType][drawCall]->descriptors[1].textures[0] = texture;
+	m_desc_set[descriptorType][drawCall]->descriptors[2].textures[0] = basePaletteTexture;
+	m_desc_set[descriptorType][drawCall]->descriptors[3].textures[0] = lookupPaletteTexture;
+	tr_update_descriptor_set(m_renderer, m_desc_set[descriptorType][drawCall]);
 }
 /*
 =====================
@@ -109,11 +124,11 @@ GL_BindDescSetForDrawCall
 void GL_BindDescSetForDrawCall(shaderUniformBuffer_t& uniformBuffer, bool depth, bool trans) {
 	int drawCall = -1;
 	if(!depth) {
-		drawCall = POLYMER_DX12_UIDRAWCALL + numFrameUIDrawCalls;
+		drawCall = numFrameUIDrawCalls;
 
-		memcpy(m_uniform_buffers[drawCall]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
-		tr_cmd_bind_pipeline(graphicscmd, m_pipeline[drawCall]);
-		tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[drawCall], m_desc_set[drawCall]);
+		memcpy(m_uniform_buffers[DX12_DESCRIPTORSET_UI][drawCall]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
+		tr_cmd_bind_pipeline(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_UI][drawCall]);
+		tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_UI][drawCall], m_desc_set[DX12_DESCRIPTORSET_UI][drawCall]);
 		numFrameUIDrawCalls++;
 	}
 	else {		
@@ -121,15 +136,36 @@ void GL_BindDescSetForDrawCall(shaderUniformBuffer_t& uniformBuffer, bool depth,
 			drawCall = numFrameTransDrawCalls;
 		}
 		else {
-			drawCall = POLYMER_DX12_MAXTRANSCALLS + numFrameDrawCalls;
+			if (inpreparemirror)
+				drawCall = numFrameFlipedWindingDrawCalls;
+			else
+				drawCall = numFrameDrawCalls;
 		}
 
-		memcpy(m_uniform_buffers[drawCall]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
-		tr_cmd_bind_pipeline(graphicscmd, m_pipeline[drawCall]);
-		tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[drawCall], m_desc_set[drawCall]);
+		if (trans)
+		{
+			memcpy(m_uniform_buffers[DX12_DESCRIPTORSET_TRANS][drawCall]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
+			tr_cmd_bind_pipeline(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_TRANS][drawCall]);
+			tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_TRANS][drawCall], m_desc_set[DX12_DESCRIPTORSET_TRANS][drawCall]);
+		}
+		else if (inpreparemirror)
+		{
+			memcpy(m_uniform_buffers[DX12_DESCRIPTORSET_FRONTFACE][drawCall]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
+			tr_cmd_bind_pipeline(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_FRONTFACE][drawCall]);
+			tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_FRONTFACE][drawCall], m_desc_set[DX12_DESCRIPTORSET_FRONTFACE][drawCall]);
+		}
+		else
+		{
+			memcpy(m_uniform_buffers[DX12_DESCRIPTORSET_BACKFACE][drawCall]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
+			tr_cmd_bind_pipeline(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_BACKFACE][drawCall]);
+			tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_BACKFACE][drawCall], m_desc_set[DX12_DESCRIPTORSET_BACKFACE][drawCall]);
+		}
 
 		if (!trans) {
-			numFrameDrawCalls++;
+			if (!inpreparemirror)
+				numFrameDrawCalls++;
+			else
+				numFrameFlipedWindingDrawCalls++;
 		}
 		else {
 			numFrameTransDrawCalls++;
@@ -202,58 +238,69 @@ int polymer_loadmonoshader(const char *macros) {
 	vertex_layout.attribs[3].location = 3;
 	vertex_layout.attribs[3].offset = vertex_layout.attribs[2].offset + tr_util_format_stride(vertex_layout.attribs[2].format);
 
-	for(int i = 0; i < POLYMER_DX12_MAXDRAWCALLS; i++)
+	for (int d = 0; d < DX12_DESCRIPTORSET_NUMTYPES; d++)
 	{
-		std::vector<tr_descriptor> descriptors(4);
-		descriptors[0].type = tr_descriptor_type_uniform_buffer_cbv;
-		descriptors[0].count = 1;
-		descriptors[0].binding = 0;
-		descriptors[0].shader_stages = tr_shader_stage_vert;
-		
-		descriptors[1].type = tr_descriptor_type_texture_srv;
-		descriptors[1].count = 1;
-		descriptors[1].binding = 1;
-		descriptors[1].shader_stages = tr_shader_stage_frag;
+		for (int i = 0; i < POLYMER_DX12_MAXDRAWCALLS; i++)
+		{
+			std::vector<tr_descriptor> descriptors(4);
+			descriptors[0].type = tr_descriptor_type_uniform_buffer_cbv;
+			descriptors[0].count = 1;
+			descriptors[0].binding = 0;
+			descriptors[0].shader_stages = tr_shader_stage_vert;
 
-		//descriptors[2].type = tr_descriptor_type_sampler;
-		//descriptors[2].count = 1;
-		//descriptors[2].binding = 2;
-		//descriptors[2].shader_stages = tr_shader_stage_frag;
+			descriptors[1].type = tr_descriptor_type_texture_srv;
+			descriptors[1].count = 1;
+			descriptors[1].binding = 1;
+			descriptors[1].shader_stages = tr_shader_stage_frag;
 
-		descriptors[2].type = tr_descriptor_type_texture_srv;
-		descriptors[2].count = 1;
-		descriptors[2].binding = 3;
-		descriptors[2].shader_stages = tr_shader_stage_frag;
+			//descriptors[2].type = tr_descriptor_type_sampler;
+			//descriptors[2].count = 1;
+			//descriptors[2].binding = 2;
+			//descriptors[2].shader_stages = tr_shader_stage_frag;
 
-		descriptors[3].type = tr_descriptor_type_texture_srv;
-		descriptors[3].count = 1;
-		descriptors[3].binding = 4;
-		descriptors[3].shader_stages = tr_shader_stage_frag;
+			descriptors[2].type = tr_descriptor_type_texture_srv;
+			descriptors[2].count = 1;
+			descriptors[2].binding = 3;
+			descriptors[2].shader_stages = tr_shader_stage_frag;
 
-		tr_create_descriptor_set(m_renderer, (uint32_t)descriptors.size(), descriptors.data(), &m_desc_set[i]);
+			descriptors[3].type = tr_descriptor_type_texture_srv;
+			descriptors[3].count = 1;
+			descriptors[3].binding = 4;
+			descriptors[3].shader_stages = tr_shader_stage_frag;
 
-		tr_pipeline_settings pipeline_settings = { tr_primitive_topo_tri_list };
+			tr_create_descriptor_set(m_renderer, (uint32_t)descriptors.size(), descriptors.data(), &m_desc_set[d][i]);
 
-		if (i < POLYMER_DX12_UIDRAWCALL) {
-			pipeline_settings.depth = true;
-			pipeline_settings.cull_mode = tr_cull_mode_none;
-			if (i < POLYMER_DX12_MAXTRANSCALLS)
-			{
-				pipeline_settings.alphaBlend = true;
+			tr_pipeline_settings pipeline_settings = { tr_primitive_topo_tri_list };
+
+			if (d != DX12_DESCRIPTORSET_UI) {
+				pipeline_settings.depth = true;
+				if (d == DX12_DESCRIPTORSET_BACKFACE)
+				{
+					pipeline_settings.cull_mode = tr_cull_mode_back;
+				}
+				else if (d == DX12_DESCRIPTORSET_FRONTFACE)
+				{
+					pipeline_settings.cull_mode = tr_cull_mode_front;
+				}
+
+				if (d == DX12_DESCRIPTORSET_TRANS)
+				{
+					pipeline_settings.alphaBlend = true;
+				}
 			}
-		}
-		else {
-			pipeline_settings.depth = false;
-		}
+			else {
+				pipeline_settings.depth = false;
+			}
 
-		if(i < POLYMER_DX12_MAXTRANSCALLS)
-			tr_create_pipeline(m_renderer, polymerMonolithicTransShader.m_shader, &vertex_layout, m_desc_set[i], m_renderer->swapchain_render_targets[0], &pipeline_settings, &m_pipeline[i]);
-		else
-			tr_create_pipeline(m_renderer, polymerMonolithicShader.m_shader, &vertex_layout, m_desc_set[i], m_renderer->swapchain_render_targets[0], &pipeline_settings, &m_pipeline[i]);
+			if (d == DX12_DESCRIPTORSET_TRANS)
+				tr_create_pipeline(m_renderer, polymerMonolithicTransShader.m_shader, &vertex_layout, m_desc_set[d][i], m_renderer->swapchain_render_targets[0], &pipeline_settings, &m_pipeline[d][i]);
+			else
+				tr_create_pipeline(m_renderer, polymerMonolithicShader.m_shader, &vertex_layout, m_desc_set[d][i], m_renderer->swapchain_render_targets[0], &pipeline_settings, &m_pipeline[d][i]);
 
-		tr_create_uniform_buffer(m_renderer, sizeof(shaderUniformBuffer_t), true, &m_uniform_buffers[i]);
-		m_desc_set[i]->descriptors[0].uniform_buffers[0] = m_uniform_buffers[i];
-	}	
+			tr_create_uniform_buffer(m_renderer, sizeof(shaderUniformBuffer_t), true, &m_uniform_buffers[d][i]);
+			m_desc_set[d][i]->descriptors[0].uniform_buffers[0] = m_uniform_buffers[d][i];
+		}
+	}
 
 	return 1;
 }
