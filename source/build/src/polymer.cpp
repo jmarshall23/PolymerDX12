@@ -989,50 +989,51 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
     if (dacursectnum > -1 && dacursectnum < numsectors)
         getzsofslope(dacursectnum, daposx, daposy, &cursectceilz, &cursectflorz);
 
+// jmarshall - this causes huge amounts of flickering in the game
     // external view (editor)
-    if ((dacursectnum < 0) || (dacursectnum >= numsectors) ||
-            (daposz > cursectflorz) ||
-            (daposz < cursectceilz))
-    {
-        prcanbucket = 1;
-        
-        if (!editstatus && pr_verbosity>=1)
-        {
-            if ((unsigned)dacursectnum < (unsigned)numsectors)
-                OSD_Printf("PR : EXT sec=%d  z=%d (%d, %d)\n", dacursectnum, daposz, cursectflorz, cursectceilz);
-            else
-                OSD_Printf("PR : EXT sec=%d  z=%d\n", dacursectnum, daposz);
-        }
-        
-        curmodelviewmatrix = rootmodelviewmatrix;
-        i = numsectors-1;
-        while (i >= 0)
-        {
-            polymer_updatesector(i);
-            polymer_drawsector(i, FALSE);
-            polymer_scansprites(i, tsprite, &spritesortcnt);
-            i--;
-        }
-        
-        i = numwalls-1;
-        while (i >= 0)
-        {
-            polymer_updatewall(i);
-            polymer_drawwall(sectorofwall(i), i);
-            i--;
-        }
-        
-        polymer_emptybuckets();
-        
-        viewangle = daang;
-        videoEndDrawing();
-        currentDrawRoomLayer++;
-        numTransparentIndexes = 0;
-        numNormalIndexes = 0;
-        tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]);
-        return;
-    }
-
+    //if ((dacursectnum < 0) || (dacursectnum >= numsectors) ||
+    //        (daposz > cursectflorz) ||
+    //        (daposz < cursectceilz))
+    //{
+    //    prcanbucket = 1;
+    //    
+    //    if (!editstatus && pr_verbosity>=1)
+    //    {
+    //        if ((unsigned)dacursectnum < (unsigned)numsectors)
+    //            OSD_Printf("PR : EXT sec=%d  z=%d (%d, %d)\n", dacursectnum, daposz, cursectflorz, cursectceilz);
+    //        else
+    //            OSD_Printf("PR : EXT sec=%d  z=%d\n", dacursectnum, daposz);
+    //    }
+    //    
+    //    curmodelviewmatrix = rootmodelviewmatrix;
+    //    i = numsectors-1;
+    //    while (i >= 0)
+    //    {
+    //        polymer_updatesector(i);
+    //        polymer_drawsector(i, FALSE);
+    //        polymer_scansprites(i, tsprite, &spritesortcnt);
+    //        i--;
+    //    }
+    //    
+    //    i = numwalls-1;
+    //    while (i >= 0)
+    //    {
+    //        polymer_updatewall(i);
+    //        polymer_drawwall(sectorofwall(i), i);
+    //        i--;
+    //    }
+    //    
+    //    polymer_emptybuckets();
+    //    
+    //    viewangle = daang;
+    //    videoEndDrawing();
+    //    currentDrawRoomLayer++;
+    //    numTransparentIndexes = 0;
+    //    numNormalIndexes = 0;
+    //    tr_cmd_bind_index_buffer(graphicscmd, prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]);
+    //    return;
+    //}
+// jmarshall end
     // GO!
     polymer_displayrooms(dacursectnum);
 
