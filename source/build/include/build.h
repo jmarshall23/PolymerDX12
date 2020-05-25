@@ -35,6 +35,8 @@ enum rhiType_t {
     RHI_D3D12
 };
 
+int Engine_GetAnimTile(void);
+
 extern rhiType_t rhiType;
 
 __forceinline float packint(int c1, int c2, int c3, int c4)

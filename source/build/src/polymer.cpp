@@ -352,8 +352,10 @@ void polymer_uploadnewpalette(void) {
 	{
 		uploadedbasepaltable[p] = basepaltable[p];
 
-		if (basepaltable[p] == NULL)
-			continue;
+        if (basepaltable[p] == NULL) {
+            basepalWFullBrightInfo += 256 * 4;
+            continue;
+        }
 
 		for (int i = 0; i < 256; ++i)
 		{

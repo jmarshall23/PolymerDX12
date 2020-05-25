@@ -1045,7 +1045,12 @@ void polymost_glinit()
 			tilepacker_addTile(0, 2, 2);
 			for (int picnum = 0; picnum < MAXTILES; ++picnum)
 			{
-				tilepacker_addTile(picnum, (uint32_t)tilesiz[picnum].x, (uint32_t)tilesiz[picnum].y);
+                if (picnum == Engine_GetAnimTile()) {
+                    tilepacker_addTile(picnum, 200, 320);
+                }
+                else {
+                    tilepacker_addTile(picnum, (uint32_t)tilesiz[picnum].x, (uint32_t)tilesiz[picnum].y);
+                }
 				tileLoad(picnum);
 			}
 
@@ -2512,20 +2517,22 @@ void gloadtile_art(int32_t dapic, int32_t dapal, int32_t tintpalnum, int32_t das
 		if (rhiType == RHI_D3D12) {
 			if (doalloc) {
 				if (pth->d3dpic == NULL) {
-#define TILE_ANIM           (MAXTILES-4)
-
-					// We only a texture for the TILE_ANIM for .anm movies, everything else needs to use the texture atlas. 
-					if (dapic == TILE_ANIM)
-					{
-						tr_create_texture_2d(m_renderer, siz.x, siz.y, tr_sample_count_1, tr_format_r8g8b8a8_unorm, tr_max_mip_levels, NULL, false, tr_texture_usage_sampled_image, &pth->d3dpic);
-
-						//FILE* f = fopen("d:\\dump.raw", "wb");
-						//fwrite(pic, 1, siz.x* siz.y * 4, f);
-						//fclose(f);
-
-						int image_row_stride = 4 * siz.x;
-						tr_util_update_texture_uint8(m_renderer->graphics_queue, siz.x, siz.y, image_row_stride, (const uint8_t*)pic, 4, pth->d3dpic, NULL, NULL);
-					}
+// jmarshall - no longer needed anm go through the texture atlas.
+//#define TILE_ANIM           (MAXTILES-4)
+//
+//					// We only a texture for the TILE_ANIM for .anm movies, everything else needs to use the texture atlas. 
+//					if (dapic == TILE_ANIM)
+//					{
+//						tr_create_texture_2d(m_renderer, siz.x, siz.y, tr_sample_count_1, tr_format_r8g8b8a8_unorm, tr_max_mip_levels, NULL, false, tr_texture_usage_sampled_image, &pth->d3dpic);
+//
+//						//FILE* f = fopen("d:\\dump.raw", "wb");
+//						//fwrite(pic, 1, siz.x* siz.y * 4, f);
+//						//fclose(f);
+//
+//						int image_row_stride = 4 * siz.x;
+//						tr_util_update_texture_uint8(m_renderer->graphics_queue, siz.x, siz.y, image_row_stride, (const uint8_t*)pic, 4, pth->d3dpic, NULL, NULL);
+//					}
+// jmarshall
 				}
 			}
 		}

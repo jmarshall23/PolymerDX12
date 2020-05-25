@@ -758,6 +758,10 @@ void videoSetPalette(char dabrightness, uint8_t dapalid, uint8_t flags)
         palfadergb.r = palfadergb.g = palfadergb.b = 0;
         palfadedelta = 0;
     }
+
+    if (rhiType == RHI_D3D12) {
+        polymer_uploadnewpalette();
+    }
 }
 
 palette_t paletteGetColor(int32_t col)

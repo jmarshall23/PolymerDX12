@@ -42,6 +42,10 @@ EDUKE32_STATIC_ASSERT(INT16_MAX >= MAXSOUNDS);
 hashtable_t h_dukeanim = { 8, NULL };
 dukeanim_t * g_animPtr;
 
+int Engine_GetAnimTile(void) {
+	return TILE_ANIM;
+}
+
 dukeanim_t *Anim_Find(const char *s)
 {
     intptr_t ptr = hash_findcase(&h_dukeanim, s);

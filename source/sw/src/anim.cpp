@@ -64,7 +64,13 @@ const char *ANIMname[] =
     "zfcin.anm",
 };
 
-#define ANIM_TILE(num) (MAXTILES-11 + (num))
+// jmarshall
+#define ANIM_TILE(num) (MAXTILES-11)
+// jmarshall end
+
+int Engine_GetAnimTile() {
+    return ANIM_TILE(0);
+}
 
 void AnimShareIntro(int frame, int numframes)
 {
