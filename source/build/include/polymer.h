@@ -1,4 +1,4 @@
-// Here lies the slow as shit renderer!
+// Here lies THE FASTER THEN POLYMOST RENDERER! #VuklanIsAwesome and #OpenGLIsGarbage
 
 #ifndef polymer_h_
 # define polymer_h_

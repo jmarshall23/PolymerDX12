@@ -802,6 +802,11 @@ void D3D12_CreateProjectionMatrix(int32_t fov, float4x4& projectionMatrix, int w
 	projectionMatrix.r1 = float4(matrix[4], matrix[5], matrix[6], matrix[7]);
 	projectionMatrix.r2 = float4(matrix[8], matrix[9], matrix[10], matrix[11]);
 	projectionMatrix.r3 = float4(matrix[12], matrix[13], matrix[14], matrix[15]);
+
+    if(inpreparemirror) {
+        float4x4 mirrorscale = float4x4Scale(-1.0f, 1.0f, 1.0f);
+        projectionMatrix = projectionMatrix * mirrorscale;
+    }
 }
 
 // The parallaxed ART sky angle divisor corresponding to a horizfrac of 32768.
@@ -839,7 +844,7 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
     pos[0] = (float)daposy;
     pos[1] = -(float)(daposz) / 16.0f;
     pos[2] = -(float)daposx;
-
+ 
     if (rhiType == RHI_OPENGL) {
         polymer_updatelights();
     }
@@ -934,7 +939,9 @@ void polymer_drawrooms(int32_t daposx, int32_t daposy, int32_t daposz, fix16_t d
 
 			float4x4 skyModelView = viewMatrix;
 
-			float4x4 scaleMatrix = float4x4Scale(1.0f / 1000.0f, 1.0f / 1000.0f, 1.0f / 1000.0f);
+            float4x4 scaleMatrix;
+            
+            scaleMatrix = float4x4Scale(1.0f / 1000.0f, 1.0f / 1000.0f, 1.0f / 1000.0f);
 			viewMatrix = viewMatrix * scaleMatrix;
 
 			float4x4 translationMatrix = float4x4Translation(-position.x, -position.y, -position.z);
