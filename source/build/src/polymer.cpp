@@ -1281,7 +1281,7 @@ static void         polymer_drawsearchplane(_prplane *plane, GLubyte *oldcolor, 
 
     polymer_setupdiffusemodulation(plane, modulation, data);
 
-    polymer_drawplane(plane, false);
+    polymer_drawplane(plane, false, false);
 
     Bmemcpy(plane->material.diffusemodulation, oldcolor, sizeof(GLubyte) * 4);
 }
@@ -1308,7 +1308,7 @@ void                polymer_drawmaskwall(int32_t damaskwallcnt)
         polymer_drawsearchplane(&w->mask, oldcolor, 0x04, (GLubyte *)&maskwall[damaskwallcnt]);
     } else {
         calc_and_apply_fog(fogshade(wal->shade, wal->pal), sec->visibility, get_floor_fogpal(sec));
-        polymer_drawplane(&w->mask, false);
+        polymer_drawplane(&w->mask, false, true);
     }
 
 	if (rhiType == RHI_OPENGL) {
@@ -1446,7 +1446,7 @@ void                polymer_drawsprite(int32_t snum)
     if ((!depth || mirrors[depth-1].plane) && !pr_ati_nodepthoffset)
         glEnable(GL_POLYGON_OFFSET_FILL);
 
-    polymer_drawplane(&s->plane, false);
+    polymer_drawplane(&s->plane, false, false);
 
     if ((!depth || mirrors[depth-1].plane) && !pr_ati_nodepthoffset)
         glDisable(GL_POLYGON_OFFSET_FILL);
@@ -1712,6 +1712,14 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
 
 			//sectorqueue[d] = wall[sec->wallptr + i].nextsector;
 			drawingstate[wall[sec->wallptr + i].nextsector] = 1;
+
+			if ((wall[sec->wallptr + i].cstat & 48) == 16)
+			{
+				int pic = wall[sec->wallptr + i].overpicnum;
+
+				if (tilesiz[pic].x > 0 && tilesiz[pic].y > 0)
+					localmaskwall[localmaskwallcnt++] = sec->wallptr + i;
+			}
 
 			if (!depth && (overridematerial & prprogrambits[PR_BIT_MIRROR_MAP].bit) &&
 				wall[sec->wallptr + i].overpicnum == 560 &&
@@ -1988,7 +1996,7 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
             glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
 
             mirrorlist[i].plane->material.mirrormap = prrts[0].color;
-            polymer_drawplane(mirrorlist[i].plane, false);
+            polymer_drawplane(mirrorlist[i].plane, false, false);
             mirrorlist[i].plane->material.mirrormap = 0;
 
             i--;
@@ -2180,7 +2188,7 @@ static void         polymer_bucketplane(_prplane* plane)
     }
 }
 
-static void         polymer_drawplane(_prplane* plane, bool hasAlpha)
+static void         polymer_drawplane(_prplane* plane, bool hasAlpha, bool drawImmediate)
 {
     int32_t         materialbits;
 
@@ -2205,6 +2213,9 @@ static void         polymer_drawplane(_prplane* plane, bool hasAlpha)
             numNormalIndexes += numIndexes;
         }
 		memcpy(((unsigned char*)prd3d12_index_buffer[frameIdx][currentDrawRoomLayer]->cpu_mapped_address) + (startWriteIndex * sizeof(unsigned int)), &board_indexes_table[startIndex], numIndexes * sizeof(unsigned int));
+        if (drawImmediate) {
+            GL_DrawBuffer(startWriteIndex, numIndexes, hasAlpha);
+        }
 		return;
 	}
 
@@ -3062,7 +3073,7 @@ static void         polymer_drawsector(int16_t sectnum, int32_t domasks)
         else {
             calc_and_apply_fog(fogshade(sec->floorshade, sec->floorpal), sec->visibility,
                 get_floor_fogpal(sec));
-            polymer_drawplane(&s->floor, TEST(sec->floorstat, 384));
+            polymer_drawplane(&s->floor, TEST(sec->floorstat, 384), false);
         }
     } else if (!domasks && cursectormaskcount && sec->floorstat & 384) {
         // If we just skipped a mask, queue it for later
@@ -3086,7 +3097,7 @@ static void         polymer_drawsector(int16_t sectnum, int32_t domasks)
         else {
             calc_and_apply_fog(fogshade(sec->ceilingshade, sec->ceilingpal), sec->visibility,
                                get_ceiling_fogpal(sec));
-            polymer_drawplane(&s->ceil, TEST(sec->ceilingstat, 384));
+            polymer_drawplane(&s->ceil, TEST(sec->ceilingstat, 384), false);
         }
     } else if (!domasks && !queuedmask && cursectormaskcount &&
                (sec->ceilingstat & 384)) {
@@ -3759,7 +3770,7 @@ static void         polymer_drawwall(int16_t sectnum, int16_t wallnum)
             polymer_drawsearchplane(&w->wall, oldcolor, 0x05, (GLubyte *) &wallnum);
         }
         else
-            polymer_drawplane(&w->wall, false);
+            polymer_drawplane(&w->wall, false, false);
     }
 
     if ((w->underover & 2) && (!parallaxedceiling || (searchit == 2)))
@@ -3768,7 +3779,7 @@ static void         polymer_drawwall(int16_t sectnum, int16_t wallnum)
             polymer_drawsearchplane(&w->over, oldcolor, 0x00, (GLubyte *) &wallnum);
         }
         else
-            polymer_drawplane(&w->over, false);
+            polymer_drawplane(&w->over, false, false);
     }
 
     if ((wall[wallnum].cstat & 32) && (wall[wallnum].nextsector >= 0))
@@ -3777,7 +3788,7 @@ static void         polymer_drawwall(int16_t sectnum, int16_t wallnum)
             polymer_drawsearchplane(&w->mask, oldcolor, 0x04, (GLubyte *) &wallnum);
         }
         else
-            polymer_drawplane(&w->mask, false);
+            polymer_drawplane(&w->mask, false, false);
     }
 
     //if (!searchit && (sector[sectnum].ceilingstat & 1) &&
