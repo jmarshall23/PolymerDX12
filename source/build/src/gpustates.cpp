@@ -3,6 +3,7 @@
 
 #include "build.h"
 #include "buildrender.h"
+#include "engine_priv.h"
 #include <vector>
 #include <windowsnumerics.h>
 
@@ -148,7 +149,7 @@ void GL_DrawBuffer(int picnum, float * drawpolyVerts, int numPoints) {
 		cpuVertexPointer->TileRect[3] = TileRectInfo[3];
 
 		// TODO: Add gui palettes.
-		cpuVertexPointer->info[0] = 0;
+		cpuVertexPointer->info[0] = globalshade;
 		cpuVertexPointer->info[1] = 0;
 		cpuVertexPointer->info[2] = packint(globalpal, curbasepal, 0, 0);;
 
