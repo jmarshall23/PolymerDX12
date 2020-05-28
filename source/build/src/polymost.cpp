@@ -361,7 +361,8 @@ void gltexinvalidatetype(int32_t type)
         }
     }
 
-    clearskins(type);
+    if(rhiType == RHI_OPENGL)
+        clearskins(type);
 
 #ifdef DEBUGGINGAIDS
     OSD_Printf("gltexinvalidateall()\n");

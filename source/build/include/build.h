@@ -45,7 +45,8 @@ __forceinline float packint(int c1, int c2, int c3, int c4)
 }
 
 struct shaderUniformBuffer_t {
-	float mvp[16];
+    float modelMatrix[16];
+	float mvp[16];    
 };
 
 void GL_Init(void);
@@ -59,7 +60,10 @@ void GL_EndFrame(void);
 void GL_BindTexture(struct tr_texture* texture, int tmu, bool trans, bool ui);
 void GL_BindDescSetForDrawCall(shaderUniformBuffer_t& uniformBuffer, bool depth, bool trans);
 void GL_DrawBufferVertex(int startVertex, int numPoints);
+void GL_SetModelOffsetMatrixIdentity();
+void GL_SetModelOffsetMatrix(float* newModelOffsetMatrix);
 
+void PolymostProcessVoxels(void);
 #ifdef __cplusplus
 extern "C" {
 #endif

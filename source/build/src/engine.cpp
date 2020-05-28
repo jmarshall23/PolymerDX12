@@ -10898,27 +10898,30 @@ static void videoAllocateBuffers(void)
 }
 
 #ifdef USE_OPENGL
-static void PolymostProcessVoxels(void)
+void PolymostProcessVoxels(void)
 {
+    if (rhiType == RHI_OPENGL)
+    {
 # ifdef USE_GLEXT
-    for (bssize_t i = 0; i < MAXVOXELS; i++)
-    {
-        if (voxmodels[i])
-            voxvboalloc(voxmodels[i]);
-    }
-
-    if (models)
-    {
-        for (bssize_t i = 0; i < nextmodelid; i++)
+        for (bssize_t i = 0; i < MAXVOXELS; i++)
         {
-            if (models[i]->mdnum == 1)
-                voxvboalloc((voxmodel_t*)models[i]);
+            if (voxmodels[i])
+                voxvboalloc(voxmodels[i]);
         }
-    }
+
+        if (models)
+        {
+            for (bssize_t i = 0; i < nextmodelid; i++)
+            {
+                if (models[i]->mdnum == 1)
+                    voxvboalloc((voxmodel_t*)models[i]);
+            }
+        }
 # endif
 
-    if (g_haveVoxels != 1)
-        return;
+        if (g_haveVoxels != 1)
+            return;
+    }
 
     g_haveVoxels = 2;
 
@@ -10932,7 +10935,10 @@ static void PolymostProcessVoxels(void)
             voxmodels[i] = voxload(voxfilenames[i]);
             voxmodels[i]->scale = voxscale[i]*(1.f/65536.f);
 # ifdef USE_GLEXT
-            voxvboalloc(voxmodels[i]);
+            if (rhiType == RHI_OPENGL)
+            {
+                voxvboalloc(voxmodels[i]);
+            }
 # endif
             DO_FREE_AND_NULL(voxfilenames[i]);
         }

@@ -206,6 +206,10 @@ typedef struct
     int32_t is8bit;
     uint32_t texid8bit;
     GLuint vbo, vboindex;
+// jmarshall
+	int32_t numVertexes;
+	struct tr_buffer* d3d12_vbo;
+// jmarshall end
 } voxmodel_t;
 
 EXTERN mdmodel_t **models;

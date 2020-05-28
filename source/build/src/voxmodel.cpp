@@ -17,7 +17,7 @@
 #include "palette.h"
 
 #include "vfs.h"
-
+#include "tinyvk.h"
 
 //For loading/conversion only
 static vec3_t voxsiz;
@@ -36,35 +36,50 @@ static int32_t mytexo5, *zbit, gmaxx, gmaxy, garea, pow2m1[33];
 static voxmodel_t *gvox;
 
 
+extern tr_renderer* m_renderer;
+tr_texture* vox_model_textures[MAXSPRITES];
+int numVoxelTextures = 0;
+
+
 //pitch must equal xsiz*4
-uint32_t gloadtex_indexed(const int32_t *picbuf, int32_t xsiz, int32_t ysiz)
+uint32_t gloadtex_indexed(const int32_t* picbuf, int32_t xsiz, int32_t ysiz)
 {
-    const coltype *const pic = (const coltype *)picbuf;
-    char *pic2 = (char *)Xmalloc(xsiz*ysiz*sizeof(char));
+	const coltype* const pic = (const coltype*)picbuf;
+	char* pic2 = (char*)Xmalloc(xsiz * ysiz * sizeof(char));
 
-    for (bssize_t i=0; i < ysiz; i++)
-    {
-        for (bssize_t j=0; j < xsiz; j++)
-        {
-            pic2[j*ysiz+i] = pic[i*xsiz+j].a;
-        }
-    }
+	for (bssize_t i = 0; i < ysiz; i++)
+	{
+		for (bssize_t j = 0; j < xsiz; j++)
+		{
+			pic2[j * ysiz + i] = pic[i * xsiz + j].a;
+		}
+	}
 
-    uint32_t rtexid;
+	uint32_t rtexid;
 
-    glGenTextures(1, (GLuint *) &rtexid);
-    glBindTexture(GL_TEXTURE_2D, rtexid);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1);
+	if (rhiType == RHI_OPENGL)
+	{
+		glGenTextures(1, (GLuint*)&rtexid);
+		glBindTexture(GL_TEXTURE_2D, rtexid);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, ysiz, xsiz, 0, GL_RED, GL_UNSIGNED_BYTE, (char *) pic2);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, ysiz, xsiz, 0, GL_RED, GL_UNSIGNED_BYTE, (char*)pic2);
+	}
+	else {
+		tr_create_texture_2d(m_renderer, ysiz, xsiz, tr_sample_count_1, tr_format_r8_unorm, 1, NULL, false, tr_texture_usage_sampled_image, &vox_model_textures[numVoxelTextures]);
+		tr_util_update_texture_uint8(m_renderer->graphics_queue, ysiz, xsiz, (ysiz * 1), (const uint8_t*)pic2, 1, vox_model_textures[numVoxelTextures], NULL, NULL);
 
-    Xfree(pic2);
+		rtexid = numVoxelTextures;
+		numVoxelTextures++;
+	}
 
-    return rtexid;
+	Xfree(pic2);
+
+	return rtexid + 1;
 }
 
 uint32_t gloadtex(const int32_t *picbuf, int32_t xsiz, int32_t ysiz, int32_t is8bit, int32_t dapal)
@@ -982,6 +997,8 @@ voxmodel_t *voxload(const char *filnam)
         vm->is8bit = is8bit;
 
         vm->texid = (uint32_t *)Xcalloc(MAXPALOOKUPS, sizeof(uint32_t));
+
+        polymer_buildvoxelmesh((voxmodel_t*)vm);
     }
 
     DO_FREE_AND_NULL(shcntmal);

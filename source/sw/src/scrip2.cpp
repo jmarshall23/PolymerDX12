@@ -305,6 +305,9 @@ void LoadKVXFromScript(const char *filename)
         {
             // Store the sprite and voxel numbers for later use
             aVoxelArray[lTile].Voxel = lNumber; // Voxel num
+            if(rhiType == RHI_D3D12) {
+                tiletovox[lTile] = lNumber;
+            }
         }
 
         if (lNumber >= nextvoxid)   // JBF: so voxels in the def file append to the list

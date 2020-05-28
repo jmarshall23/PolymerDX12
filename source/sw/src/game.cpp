@@ -1035,6 +1035,10 @@ InitGame(int32_t argc, char const * const * argv)
     if (!SW_SHAREWARE)
         LoadCustomInfoFromScript("swcustom.txt");   // Load user customisation information
 
+    if (rhiType == RHI_D3D12) {
+        PolymostProcessVoxels();
+    }
+
     if (!loaddefinitionsfile(G_DefFile())) buildputs("Definitions file loaded.\n");
 
     for (char * m : g_defModules)

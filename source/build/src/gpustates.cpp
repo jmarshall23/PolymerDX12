@@ -37,6 +37,11 @@ float modelview_matrix[16] = { 1, 0, 0, 0,
 								0, 0, 1, 0,
 								0, 0, 0, 1 };
 
+float modeloffset_matrix[16] = { 1, 0, 0, 0,
+								0, 1, 0, 0,
+								0, 0, 1, 0,
+								0, 0, 0, 1 };
+
 float identity_matrix[16] = { 1, 0, 0, 0,
 								0, 1, 0, 0,
 								0, 0, 1, 0,
@@ -44,7 +49,7 @@ float identity_matrix[16] = { 1, 0, 0, 0,
 
 float state_color[4] = { 1, 1, 1, 1 };
 
-void GL_MultiplyMatrix(float * m1Ptr, float * m2Ptr, float * dstPtr) {
+void GL_MultiplyMatrix(float* m1Ptr, float* m2Ptr, float* dstPtr) {
 	for (int i = 0; i < 4; i++) {
 		for (int j = 0; j < 4; j++) {
 			*dstPtr = m1Ptr[0] * m2Ptr[0 * 4 + j]
@@ -74,10 +79,10 @@ void GL_Init(void) {
 	tr_create_vertex_buffer(m_renderer, vertexDataSize, true, vertexStride, &prd3d12_vertex_buffer);
 	for (int d = 0; d < 3; d++)
 		for (int i = 0; i < MAX_DRAWROOM_LAYERS; i++) {
-		{
-			tr_create_index_buffer(m_renderer, indexDataSize, true, tr_index_type_uint32, &prd3d12_index_buffer[d][i]);
+			{
+				tr_create_index_buffer(m_renderer, indexDataSize, true, tr_index_type_uint32, &prd3d12_index_buffer[d][i]);
+			}
 		}
-	}
 
 	tr_create_index_buffer(m_renderer, 6 * sizeof(uint32_t), true, tr_index_type_uint32, &prd3d12_null_index_buffer);
 	memset(((unsigned char*)prd3d12_null_index_buffer->cpu_mapped_address), 0, sizeof(uint32_t) * 6);
@@ -87,8 +92,16 @@ void GL_SetProjectionMatrix(float* newProjectionMatrix) {
 	memcpy(projection_matrix, newProjectionMatrix, sizeof(float) * 16);
 }
 
-void GL_SetModelViewMatrix(float *newModelViewMatrix) {
+void GL_SetModelViewMatrix(float* newModelViewMatrix) {
 	memcpy(modelview_matrix, newModelViewMatrix, sizeof(float) * 16);
+}
+
+void GL_SetModelOffsetMatrix(float* newModelOffsetMatrix) {
+	memcpy(modeloffset_matrix, newModelOffsetMatrix, sizeof(float) * 16);
+}
+
+void GL_SetModelOffsetMatrixIdentity() {
+	memcpy(modeloffset_matrix, identity_matrix, sizeof(float) * 16);
 }
 
 void GL_SetModelViewToIdentity(void) {
@@ -102,7 +115,7 @@ void GL_SetColor(float r, float g, float b, float a) {
 	state_color[3] = a;
 }
 
-void GL_DrawBuffer(int picnum, float * drawpolyVerts, int numPoints) {
+void GL_DrawBuffer(int picnum, float* drawpolyVerts, int numPoints) {
 	float TileRectInfo[4];
 
 	if (picnum >= 0) {
@@ -119,11 +132,11 @@ void GL_DrawBuffer(int picnum, float * drawpolyVerts, int numPoints) {
 	int startVertex = numBoardVertexes + numSpriteVertexes + numGuiVertexes;
 	uint32_t quadindices[6] = { 0, 1, 2, 3, 2, 0 };
 
-	if(numPoints == 6) {
+	if (numPoints == 6) {
 		for (int d = 0; d < 6; d++)
 			quadindices[d] = d;
 	}
-	else if(numPoints == 4){
+	else if (numPoints == 4) {
 		numPoints = 6;
 	}
 	else {
@@ -160,6 +173,7 @@ void GL_DrawBuffer(int picnum, float * drawpolyVerts, int numPoints) {
 	}
 
 	shaderUniformBuffer_t uniformBuffer;
+	memcpy(uniformBuffer.modelMatrix, modeloffset_matrix, sizeof(float) * 16);
 	GL_MultiplyMatrix(modelview_matrix, projection_matrix, uniformBuffer.mvp);
 	//memcpy(uniformBuffer.worldbuffer, modelview_matrix, sizeof(float) * 16);
 
@@ -171,6 +185,7 @@ void GL_DrawBuffer(int picnum, float * drawpolyVerts, int numPoints) {
 
 void GL_DrawBuffer(int startIndex, int numIndexes, bool alphaBlend) {
 	shaderUniformBuffer_t uniformBuffer;
+	memcpy(uniformBuffer.modelMatrix, modeloffset_matrix, sizeof(float) * 16);
 	GL_MultiplyMatrix(modelview_matrix, projection_matrix, uniformBuffer.mvp);
 	//memcpy(uniformBuffer.worldbuffer, modelview_matrix, sizeof(float) * 16);
 	GL_BindDescSetForDrawCall(uniformBuffer, true, alphaBlend);
@@ -183,6 +198,7 @@ void GL_DrawBuffer(int startIndex, int numIndexes, bool alphaBlend) {
 
 void GL_DrawBufferVertex(int startVertex, int numPoints) {
 	shaderUniformBuffer_t uniformBuffer;
+	memcpy(uniformBuffer.modelMatrix, modeloffset_matrix, sizeof(float) * 16);
 	GL_MultiplyMatrix(modelview_matrix, projection_matrix, uniformBuffer.mvp);
 	//memcpy(uniformBuffer.worldbuffer, modelview_matrix, sizeof(float) * 16);
 	GL_BindDescSetForDrawCall(uniformBuffer, true, false);

@@ -1075,12 +1075,13 @@ JAnalyzeSprites(tspriteptr_t tspr)
 
     // Check for voxels
     //if (bVoxelsOn)
-    if (gs.Voxels && usevoxels && videoGetRenderMode() != REND_POLYMER)
+    if (gs.Voxels && usevoxels)
     {
         if (aVoxelArray[tspr->picnum].Voxel >= 0 && !(spriteext[tspr->owner].flags&SPREXT_NOTMD))
         {
             // Turn on voxels
-            tspr->picnum = aVoxelArray[tspr->picnum].Voxel;     // Get the voxel number
+            if(rhiType == RHI_OPENGL)
+                tspr->picnum = aVoxelArray[tspr->picnum].Voxel;     // Get the voxel number
             tspr->cstat |= 48;          // Set stat to voxelize sprite
         }
     }
@@ -1089,7 +1090,7 @@ JAnalyzeSprites(tspriteptr_t tspr)
         switch (tspr->picnum)
         {
         case 764: // Gun barrel
-            if (!usevoxels || videoGetRenderMode() == REND_POLYMER || (spriteext[tspr->owner].flags&SPREXT_NOTMD))
+            if (!usevoxels || (spriteext[tspr->owner].flags&SPREXT_NOTMD))
             {
                 tspr->cstat |= 16;
                 break;

@@ -25,6 +25,7 @@ struct Vertex {
 };
 
 void polymer_uploadnewpalette(void);
+void polymer_buildvoxelmesh(voxmodel_t* m);
 
 //extern Vertex board_vertexes[POLYMER_DX12_MAXVERTS];
 extern int numBoardVertexes;
