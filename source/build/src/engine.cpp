@@ -10942,9 +10942,6 @@ void PolymostProcessVoxels(void)
 
     g_haveVoxels = 2;
 
-    OSD_Printf("Generating voxel models for Polymost. This may take a while...\n");
-    videoNextPage();
-
     for (bssize_t i=0; i<MAXVOXELS; i++)
     {
         if (voxfilenames[i])
@@ -10960,6 +10957,13 @@ void PolymostProcessVoxels(void)
             DO_FREE_AND_NULL(voxfilenames[i]);
         }
     }
+
+    polymer_buildmodelvertexbuffer();
+
+// jmarshall - moved this here because before videonextpage can be called, we need all of the models to be built.
+	OSD_Printf("Generating voxel models for Polymost. This may take a while...\n");
+	videoNextPage();
+// jmarshall end
 }
 
 static void PolymostFreeVBOs(void)

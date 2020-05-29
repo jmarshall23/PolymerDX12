@@ -66,6 +66,8 @@ tr_render_target* render_target = NULL;
 tr_cmd* graphicscmd = NULL;
 SDL_mutex   *d3d_fence_mutex;
 
+extern tr_buffer* model_readonly_vertexbuffer;
+
 #if SDL_MAJOR_VERSION >= 2
 static SDL_version linked;
 #else
@@ -2035,8 +2037,10 @@ void videoShowFrame(int32_t w)
 			tr_clear_value depth_stencil_clear_value = { 0 };
 			depth_stencil_clear_value.depth = 1.0f;
 			depth_stencil_clear_value.stencil = 255;
-			tr_cmd_clear_depth_stencil_attachment(graphicscmd, &depth_stencil_clear_value);            
-            tr_cmd_bind_vertex_buffers(graphicscmd, 1, &prd3d12_vertex_buffer);                        
+			tr_cmd_clear_depth_stencil_attachment(graphicscmd, &depth_stencil_clear_value);     
+
+            tr_buffer* frameVertexBuffers[2] = { prd3d12_vertex_buffer, model_readonly_vertexbuffer };
+            tr_cmd_bind_vertex_buffers(graphicscmd, 2, frameVertexBuffers);
 		}
 		return;
 	}

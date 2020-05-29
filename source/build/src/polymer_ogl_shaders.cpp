@@ -47,13 +47,15 @@ struct buildShader_t {
 buildShader_t polymerMonolithicShader;
 buildShader_t polymerMonolithicTransShader;
 
-#define POLYMER_DX12_MAXDRAWCALLS				4000
+#define POLYMER_DX12_MAXDRAWCALLS				3000
 
 enum polymerDescriptorSetType_t {
 	DX12_DESCRIPTORSET_BACKFACE = 0,
 	DX12_DESCRIPTORSET_FRONTFACE,
 	DX12_DESCRIPTORSET_UI,
 	DX12_DESCRIPTORSET_TRANS,
+	DX12_DESCRIPTORSET_MODELVB_BACKFACE,
+	DX12_DESCRIPTORSET_MODELVB_FRONTFACE,
 	DX12_DESCRIPTORSET_NUMTYPES
 };
 
@@ -64,6 +66,7 @@ int numFrameDrawCalls = 0;
 int numFrameFlipedWindingDrawCalls = 0;
 int numFrameTransDrawCalls = 0;
 int numFrameUIDrawCalls = 0;
+bool polymer_isRenderingModels = false;
 
 /*
 =====================
@@ -91,11 +94,18 @@ void GL_BindTexture(struct tr_texture *texture, int tmu, bool trans, bool ui) {
 		}
 		else {
 			if (inpreparemirror) {
-				descriptorType = DX12_DESCRIPTORSET_FRONTFACE;
+				if(!polymer_isRenderingModels)
+					descriptorType = DX12_DESCRIPTORSET_FRONTFACE;
+				else
+					descriptorType = DX12_DESCRIPTORSET_MODELVB_FRONTFACE;
+
 				drawCall = numFrameFlipedWindingDrawCalls;
 			}
 			else {
-				descriptorType = DX12_DESCRIPTORSET_BACKFACE;
+				if (!polymer_isRenderingModels)
+					descriptorType = DX12_DESCRIPTORSET_BACKFACE;
+				else
+					descriptorType = DX12_DESCRIPTORSET_MODELVB_BACKFACE;
 				drawCall = numFrameDrawCalls;
 			}
 		}
@@ -149,16 +159,34 @@ void GL_BindDescSetForDrawCall(shaderUniformBuffer_t& uniformBuffer, bool depth,
 			tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_TRANS][drawCall], m_desc_set[DX12_DESCRIPTORSET_TRANS][drawCall]);
 		}
 		else if (inpreparemirror)
-		{
-			memcpy(m_uniform_buffers[DX12_DESCRIPTORSET_FRONTFACE][drawCall]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
-			tr_cmd_bind_pipeline(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_FRONTFACE][drawCall]);
-			tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_FRONTFACE][drawCall], m_desc_set[DX12_DESCRIPTORSET_FRONTFACE][drawCall]);
+		{		
+			if (!polymer_isRenderingModels)
+			{
+				memcpy(m_uniform_buffers[DX12_DESCRIPTORSET_FRONTFACE][drawCall]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
+				tr_cmd_bind_pipeline(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_FRONTFACE][drawCall]);
+				tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_FRONTFACE][drawCall], m_desc_set[DX12_DESCRIPTORSET_FRONTFACE][drawCall]);
+			}
+			else
+			{
+				memcpy(m_uniform_buffers[DX12_DESCRIPTORSET_MODELVB_FRONTFACE][drawCall]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
+				tr_cmd_bind_pipeline(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_MODELVB_FRONTFACE][drawCall]);
+				tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_MODELVB_FRONTFACE][drawCall], m_desc_set[DX12_DESCRIPTORSET_MODELVB_FRONTFACE][drawCall]);
+			}
 		}
 		else
 		{
-			memcpy(m_uniform_buffers[DX12_DESCRIPTORSET_BACKFACE][drawCall]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
-			tr_cmd_bind_pipeline(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_BACKFACE][drawCall]);
-			tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_BACKFACE][drawCall], m_desc_set[DX12_DESCRIPTORSET_BACKFACE][drawCall]);
+			if (!polymer_isRenderingModels)
+			{
+				memcpy(m_uniform_buffers[DX12_DESCRIPTORSET_BACKFACE][drawCall]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
+				tr_cmd_bind_pipeline(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_BACKFACE][drawCall]);
+				tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_BACKFACE][drawCall], m_desc_set[DX12_DESCRIPTORSET_BACKFACE][drawCall]);
+			}
+			else
+			{
+				memcpy(m_uniform_buffers[DX12_DESCRIPTORSET_MODELVB_BACKFACE][drawCall]->cpu_mapped_address, &uniformBuffer, sizeof(shaderUniformBuffer_t));
+				tr_cmd_bind_pipeline(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_MODELVB_BACKFACE][drawCall]);
+				tr_cmd_bind_descriptor_sets(graphicscmd, m_pipeline[DX12_DESCRIPTORSET_MODELVB_BACKFACE][drawCall], m_desc_set[DX12_DESCRIPTORSET_MODELVB_BACKFACE][drawCall]);
+			}
 		}
 
 		if (!trans) {
@@ -215,31 +243,37 @@ int polymer_loadmonoshader(const char *macros) {
 		return -1;
 	}
 
-	tr_vertex_layout vertex_layout = {};
-	vertex_layout.attrib_count = 4;
-	vertex_layout.attribs[0].semantic = tr_semantic_position;
-	vertex_layout.attribs[0].format = tr_format_r32g32b32_float;
-	vertex_layout.attribs[0].binding = 0;
-	vertex_layout.attribs[0].location = 0;
-	vertex_layout.attribs[0].offset = 0;
-	vertex_layout.attribs[1].semantic = tr_semantic_texcoord0;
-	vertex_layout.attribs[1].format = tr_format_r32g32_float;
-	vertex_layout.attribs[1].binding = 0;
-	vertex_layout.attribs[1].location = 1;
-	vertex_layout.attribs[1].offset = tr_util_format_stride(vertex_layout.attribs[0].format);
-	vertex_layout.attribs[2].semantic = tr_semantic_color;
-	vertex_layout.attribs[2].format = tr_format_r32g32b32a32_float;
-	vertex_layout.attribs[2].binding = 0;
-	vertex_layout.attribs[2].location = 2;
-	vertex_layout.attribs[2].offset = vertex_layout.attribs[1].offset + tr_util_format_stride(vertex_layout.attribs[1].format);
-	vertex_layout.attribs[3].semantic = tr_semantic_texcoord1;
-	vertex_layout.attribs[3].format = tr_format_r32g32b32_float;
-	vertex_layout.attribs[3].binding = 0;
-	vertex_layout.attribs[3].location = 3;
-	vertex_layout.attribs[3].offset = vertex_layout.attribs[2].offset + tr_util_format_stride(vertex_layout.attribs[2].format);
-
 	for (int d = 0; d < DX12_DESCRIPTORSET_NUMTYPES; d++)
 	{
+		int32_t binding = 0;
+
+		if (d == DX12_DESCRIPTORSET_MODELVB_BACKFACE || d == DX12_DESCRIPTORSET_MODELVB_FRONTFACE) {
+			binding = 1;
+		}
+
+		tr_vertex_layout vertex_layout = {};
+		vertex_layout.attrib_count = 4;
+		vertex_layout.attribs[0].semantic = tr_semantic_position;
+		vertex_layout.attribs[0].format = tr_format_r32g32b32_float;
+		vertex_layout.attribs[0].binding = binding;
+		vertex_layout.attribs[0].location = 0;
+		vertex_layout.attribs[0].offset = 0;
+		vertex_layout.attribs[1].semantic = tr_semantic_texcoord0;
+		vertex_layout.attribs[1].format = tr_format_r32g32_float;
+		vertex_layout.attribs[1].binding = binding;
+		vertex_layout.attribs[1].location = 1;
+		vertex_layout.attribs[1].offset = tr_util_format_stride(vertex_layout.attribs[0].format);
+		vertex_layout.attribs[2].semantic = tr_semantic_color;
+		vertex_layout.attribs[2].format = tr_format_r32g32b32a32_float;
+		vertex_layout.attribs[2].binding = binding;
+		vertex_layout.attribs[2].location = 2;
+		vertex_layout.attribs[2].offset = vertex_layout.attribs[1].offset + tr_util_format_stride(vertex_layout.attribs[1].format);
+		vertex_layout.attribs[3].semantic = tr_semantic_texcoord1;
+		vertex_layout.attribs[3].format = tr_format_r32g32b32_float;
+		vertex_layout.attribs[3].binding = binding;
+		vertex_layout.attribs[3].location = 3;
+		vertex_layout.attribs[3].offset = vertex_layout.attribs[2].offset + tr_util_format_stride(vertex_layout.attribs[2].format);
+
 		for (int i = 0; i < POLYMER_DX12_MAXDRAWCALLS; i++)
 		{
 			std::vector<tr_descriptor> descriptors(4);
@@ -274,11 +308,11 @@ int polymer_loadmonoshader(const char *macros) {
 
 			if (d != DX12_DESCRIPTORSET_UI) {
 				pipeline_settings.depth = true;
-				if (d == DX12_DESCRIPTORSET_BACKFACE)
+				if (d == DX12_DESCRIPTORSET_BACKFACE || d == DX12_DESCRIPTORSET_MODELVB_BACKFACE)
 				{
 					pipeline_settings.cull_mode = tr_cull_mode_back;
 				}
-				else if (d == DX12_DESCRIPTORSET_FRONTFACE)
+				else if (d == DX12_DESCRIPTORSET_FRONTFACE || d == DX12_DESCRIPTORSET_MODELVB_FRONTFACE)
 				{
 					pipeline_settings.cull_mode = tr_cull_mode_front;
 				}

@@ -26,6 +26,7 @@ struct Vertex {
 
 void polymer_uploadnewpalette(void);
 void polymer_buildvoxelmesh(voxmodel_t* m);
+void polymer_buildmodelvertexbuffer(void);
 
 //extern Vertex board_vertexes[POLYMER_DX12_MAXVERTS];
 extern int numBoardVertexes;
@@ -33,6 +34,8 @@ extern int numGuiVertexes;
 
 extern int board_indexes[POLYMER_DX12_MAXINDEXES];
 extern int numBoardIndexes;
+
+extern bool polymer_isRenderingModels;
 
 #ifdef __cplusplus
 extern "C" {

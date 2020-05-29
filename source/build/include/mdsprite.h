@@ -208,7 +208,7 @@ typedef struct
     GLuint vbo, vboindex;
 // jmarshall
 	int32_t numVertexes;
-	struct tr_buffer* d3d12_vbo;
+    int32_t startVertex;
 // jmarshall end
 } voxmodel_t;
 

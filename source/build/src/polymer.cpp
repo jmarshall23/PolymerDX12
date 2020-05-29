@@ -92,6 +92,7 @@ float4x4 biasedProjectionMatrix;
 
 #define TEST(flags,mask) !!((flags)&(mask))
 
+tr_buffer* model_readonly_vertexbuffer = nullptr;
 //Vertex board_vertexes[POLYMER_DX12_MAXVERTS];
 int numBoardVertexes = 0;
 int numGuiVertexes = 0;
@@ -123,6 +124,8 @@ GLuint          prindexringvbo;
 GLuint* prindexring;
 const GLsizeiptr prindexringsize = 65535;
 GLintptr prindexringoffset;
+
+std::vector<Vertex> voxel_cpu_vertexlist;
 
 const GLbitfield prindexringmapflags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
 
@@ -4113,23 +4116,31 @@ void polymer_buildvoxelmesh(voxmodel_t* m) {
     {
         vertexes[i].position[2] = (-vertexes[i].position[2]) + zoffset;
     }
-
+    m->startVertex = voxel_cpu_vertexlist.size();
     m->numVertexes = numVertexes;
-    uint32_t vertexStride = sizeof(Vertex);
-    tr_create_vertex_buffer(m_renderer, m->numVertexes * sizeof(Vertex), vertexStride, false, &m->d3d12_vbo);
-    tr_util_update_buffer(m_renderer->present_queue, m->numVertexes * sizeof(Vertex), vertexes, m->d3d12_vbo);
+
+    for(int i = 0; i < numVertexes; i++) {
+        voxel_cpu_vertexlist.push_back(vertexes[i]);
+    }
+    
     delete vertexes;
 
     m->texid8bit = gloadtex_indexed(m->mytex, m->mytexx, m->mytexy);
 }
 
+void polymer_buildmodelvertexbuffer(void) {
+	uint32_t vertexStride = sizeof(Vertex);
+	tr_create_vertex_buffer(m_renderer, voxel_cpu_vertexlist.size() * sizeof(Vertex), vertexStride, false, &model_readonly_vertexbuffer);
+	tr_util_update_buffer(m_renderer->present_queue, voxel_cpu_vertexlist.size() * sizeof(Vertex), &voxel_cpu_vertexlist[0], model_readonly_vertexbuffer);
+}
+
 void polymer_drawvoxel(voxmodel_t* m) {
     extern tr_texture* vox_model_textures[MAXSPRITES];
     GL_SetProjectionMatrix((float*)&normalProjectionMatrix);
-    GL_BindTexture(vox_model_textures[m->texid8bit - 1], 0, false, false);
-    tr_cmd_bind_vertex_buffers(graphicscmd, 1, &m->d3d12_vbo);
-    GL_DrawBufferVertex(0, m->numVertexes);
-    tr_cmd_bind_vertex_buffers(graphicscmd, 1, &prd3d12_vertex_buffer);
+    polymer_isRenderingModels = true;
+        GL_BindTexture(vox_model_textures[m->texid8bit - 1], 0, false, false);    
+        GL_DrawBufferVertex(m->startVertex, m->numVertexes);
+    polymer_isRenderingModels = false;
     GL_SetProjectionMatrix((float*)&biasedProjectionMatrix);
 }
 
