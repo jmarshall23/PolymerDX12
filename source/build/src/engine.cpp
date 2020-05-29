@@ -6610,7 +6610,24 @@ static void renderDrawSprite(int32_t snum)
         //polymostOcclusionGatherOnly = true;
         //polymost_drawsprite(snum);
         //polymostOcclusionGatherOnly = false;
-        polymer_drawsprite(snum);
+
+        // jmarshall: when we test if a sprite is visible using Polymost, disable voxels for that sprite, then re-enable for rendering.
+        extern bool polymostOcclusionGatherOnly;
+        polymostOcclusionGatherOnly = true;
+        auto const tspr = tspriteptr[snum];
+        int32_t cstat_backup = tspr->cstat;
+        int32_t tilevox_backup = tiletovox[tspr->picnum];
+        tiletovox[tspr->picnum] = -1;
+        tspr->cstat = 0;
+        polymost_drawsprite(snum);
+        tiletovox[tspr->picnum] = tilevox_backup;
+        tspr->cstat = cstat_backup;
+        polymostOcclusionGatherOnly = false;
+
+        if (polymer_isSpriteVisible(snum))
+        {
+            polymer_drawsprite(snum);
+        }
         if (rhiType == RHI_OPENGL)
         {
             glDisable(GL_BLEND);

@@ -4148,7 +4148,7 @@ void polymer_updatesprited3d12(int32_t snum) {
     const _prvert* inbuffer;
     const uint32_t cs = tspr->cstat;
     const uint32_t alignmask = (cs & SPR_ALIGN_MASK);
-    const uint8_t flooraligned = (alignmask == SPR_FLOOR);
+    const uint8_t flooraligned = (alignmask == SPR_FLOOR);    
 
     if (tspr->owner < 0 || tspr->picnum < 0) return;
 

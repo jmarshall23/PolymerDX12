@@ -8265,8 +8265,8 @@ void polymost_drawsprite(int32_t snum)
 
     auto const tspr = tspriteptr[snum];
 
-    if (EDUKE32_PREDICT_FALSE(bad_tspr(tspr)))
-        return;
+	if (EDUKE32_PREDICT_FALSE(bad_tspr(tspr)))
+		return;
 
     usectorptr_t sec;
 
@@ -8323,38 +8323,41 @@ void polymost_drawsprite(int32_t snum)
         || (usemodels && md_tilehasmodel(globalpicnum, globalpal) >= 0))
         calc_and_apply_fog(fogshade(globalshade, globalpal), sec->visibility, get_floor_fogpal(sec));
 
-    while (!(spriteext[spritenum].flags & SPREXT_NOTMD))
+    if (!polymostOcclusionGatherOnly)
     {
-        if (usemodels && tile2model[Ptile2tile(tspr->picnum, tspr->pal)].modelid >= 0 &&
-            tile2model[Ptile2tile(tspr->picnum, tspr->pal)].framenum >= 0)
+        while (!(spriteext[spritenum].flags & SPREXT_NOTMD))
         {
-            if (polymost_mddraw(tspr)) return;
-            break;  // else, render as flat sprite
-        }
-
-        if (usevoxels && (tspr->cstat & 48) != 48 && tiletovox[tspr->picnum] >= 0 && voxmodels[tiletovox[tspr->picnum]])
-        {
-            if (polymost_voxdraw(voxmodels[tiletovox[tspr->picnum]], tspr))
+            if (usemodels && tile2model[Ptile2tile(tspr->picnum, tspr->pal)].modelid >= 0 &&
+                tile2model[Ptile2tile(tspr->picnum, tspr->pal)].framenum >= 0)
             {
+                if (polymost_mddraw(tspr)) return;
+                break;  // else, render as flat sprite
+            }
+
+            if (usevoxels && (tspr->cstat & 48) != 48 && tiletovox[tspr->picnum] >= 0 && voxmodels[tiletovox[tspr->picnum]])
+            {
+                if (polymost_voxdraw(voxmodels[tiletovox[tspr->picnum]], tspr))
+                {
+                    if (editstatus)
+                        polymost_voxeditorfunc(spritenum, voxmodels[tiletovox[tspr->picnum]], tspr);
+
+                    return;
+                }
+                break;  // else, render as flat sprite
+            }
+
+            if ((tspr->cstat & 48) == 48 && voxmodels[tspr->picnum])
+            {
+                polymost_voxdraw(voxmodels[tspr->picnum], tspr);
+
                 if (editstatus)
-                    polymost_voxeditorfunc(spritenum, voxmodels[tiletovox[tspr->picnum]], tspr);
+                    polymost_voxeditorfunc(spritenum, voxmodels[tspr->picnum], tspr);
 
                 return;
             }
-            break;  // else, render as flat sprite
+
+            break;
         }
-
-        if ((tspr->cstat & 48) == 48 && voxmodels[tspr->picnum])
-        {
-            polymost_voxdraw(voxmodels[tspr->picnum], tspr);
-
-            if (editstatus)
-                polymost_voxeditorfunc(spritenum, voxmodels[tspr->picnum], tspr);
-
-            return;
-        }
-
-        break;
     }
 
     vec3_t pos = tspr->pos;
@@ -8379,12 +8382,14 @@ void polymost_drawsprite(int32_t snum)
     if (tsiz.x <= 0 || tsiz.y <= 0)
         return;
 
-    polymost_updaterotmat();
+    if(!polymostOcclusionGatherOnly)
+        polymost_updaterotmat();
 
     vec2f_t const ftsiz = { (float) tsiz.x, (float) tsiz.y };
 
     switch ((globalorientation >> 4) & 3)
     {
+    default:
         case 0:  // Face sprite
         {
             // Project 3D to 2D

@@ -71,7 +71,7 @@ float4 PSMain(VSOutput input) : SV_TARGET
 
 
 	float colorIndex = 256;
-	if (tileWidth > 0 && tileHeight > 0)
+	if (tileWidth > 0 || tileHeight > 0)
 	{
 		scaledUV.x = (frac(input.TexCoord.x) * tileWidth) + input.TileRect.x;
 		scaledUV.y = (frac(input.TexCoord.y) * tileHeight) + input.TileRect.y;
